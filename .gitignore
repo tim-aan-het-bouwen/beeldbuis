@@ -14,3 +14,7 @@ inlog.*
 __pycache__/
 .DS_Store
 node_modules/
+mac/test/cfg*/
+mac/test/*.png
+mac/test/shots/
+mac/test/*.log
