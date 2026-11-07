@@ -1,8 +1,8 @@
 /* Beeldbuis for TV: screens, remote handling, playback flow. */
 (function (root) {
   'use strict';
-  var P = root.BBPlatform, S = root.BBStore, X = root.BBXtream, PL = root.BBPlayer, N = root.BBNav, G = root.BBGroups;
-  var VERSION = '0.1.0';
+  var P = root.BBPlatform, S = root.BBStore, X = root.BBXtream, PL = root.BBPlayer, N = root.BBNav, G = root.BBGroups, SR = root.BBSearch;
+  var VERSION = '0.2.0';
   var $ = function (sel) { return document.querySelector(sel); };
   var screen = $('#screen');
 
@@ -363,11 +363,77 @@
       seasons.forEach(function (s) { (eps[s] || []).forEach(function (e) { if (S.get().positions['episode:' + e.id]) startS = s; }); });
       renderSeason(startS, false);
       view.back = function () {
-        if (prevHtml && (vod.kind === 'movies' || vod.kind === 'series') && view.tab !== 'home') { showVod(vod.kind); }
+        if (view.tab === 'search') showSearch();
+        else if (prevHtml && (vod.kind === 'movies' || vod.kind === 'series') && view.tab !== 'home') { showVod(vod.kind); }
         else if (typeof prevBack === 'function') showHome(); else showHome();
       };
       N.focus(screen.querySelector('.season.on'));
     }).catch(function (e) { busy(false); toast(errorMessage(e)); });
+  }
+
+  // ---------- search ----------
+  var search = { q: '', timer: null };
+  function showSearch() {
+    showTop(true); setTab('search');
+    screen.innerHTML = '<div class="page search">' +
+      '<div class="search-bar"><input class="f" id="sq" type="text" placeholder="Search channels, movies and series" autocomplete="off" autocorrect="off" spellcheck="false"></div>' +
+      '<div id="sStatus" class="search-status"></div><div id="sResults" class="rows"></div></div>';
+    var input = $('#sq');
+    input.value = search.q;
+    input.oninput = function () { clearTimeout(search.timer); search.timer = setTimeout(runSearch, 400); };
+    input._done = function () { runSearch(); var first = $('#sResults .f'); if (first) N.focus(first); };
+    view.back = showHome;
+    N.focus(input);
+    if (search.q) runSearch();
+    else $('#sStatus').innerHTML = '<p>Press OK to type. Results show channels from your groups, and all movies and series.</p>';
+  }
+  function runSearch() {
+    var input = $('#sq');
+    if (!input) return;
+    var q = input.value.trim();
+    search.q = q;
+    if (SR.norm(q).length < 2) { $('#sResults').innerHTML = ''; $('#sStatus').innerHTML = q ? '<p>Type at least two letters.</p>' : ''; return; }
+    var kinds = ['live', 'movies', 'series'], labels = { live: 'channels', movies: 'movies', series: 'series' }, prog = {};
+    function status() {
+      var waiting = kinds.filter(function (k) { return !SR.ready(k); });
+      $('#sStatus').innerHTML = waiting.length ? '<p class="dim">Getting the lists ready (only the first time): ' + waiting.map(function (k) {
+        return labels[k] + (prog[k] ? ' ' + Math.round(100 * prog[k][0] / prog[k][1]) + '%' : '');
+      }).join(' · ') + '</p>' : '';
+    }
+    function render() {
+      var box = $('#sResults'); if (!box) return;
+      var had = N.current() && box.contains(N.current());
+      var ch = SR.find('live', q, 30).map(liveItem);
+      var mv = SR.find('movies', q, 40).map(function (x) { return vodItem(x, 'movie'); });
+      var se = SR.find('series', q, 40).map(function (x) { return vodItem(x, 'series'); });
+      var all = {};
+      ch.concat(mv, se).forEach(function (it) { all[it.key] = it; });
+      var html = row('Channels', ch) + row('Movies', mv) + row('Series', se);
+      var ready = kinds.every(function (k) { return SR.ready(k); });
+      box.innerHTML = html || (ready ? empty('Nothing found', 'Try fewer or other words.') : '');
+      Array.prototype.forEach.call(box.querySelectorAll('.tile'), function (b) {
+        var it = all[b.getAttribute('data-key')];
+        b.onclick = function () {
+          if (it.type === 'live') { var gs = ch.map(function (c) { return c.group; }); playLive(it.group, gs, gs.indexOf(it.group)); }
+          else if (it.type === 'movie') showMovie(it); else showSeries(it);
+        };
+        b._fav = function () { toast(S.toggleFav(it.type === 'live' ? it : stripItem(it)) ? 'Added to favourites' : 'Removed from favourites'); };
+      });
+      if (had) { var f = box.querySelector('.f'); N.focus(f || $('#sq')); }
+    }
+    status(); render();
+    kinds.forEach(function (k) {
+      if (SR.ready(k)) return;
+      SR.build(k, function (d, n) { prog[k] = [d, n]; if ($('#sq')) status(); }).then(function () {
+        if ($('#sq') && search.q === q) { status(); render(); }
+      }, function (e) { if ($('#sq')) $('#sStatus').innerHTML = '<p class="err">Could not load ' + labels[k] + ': ' + errorMessage(e) + '</p>'; });
+    });
+  }
+  function vodItem(x, type) {
+    var o = { key: type + ':' + x.id, type: type };
+    Object.keys(x).forEach(function (k) { o[k] = x[k]; });
+    o.name = title(o.name);
+    return o;
   }
 
   // ---------- settings ----------
@@ -377,13 +443,17 @@
     screen.innerHTML = '<div class="page settings">' +
       '<button class="f setting" id="stCountries"><b>Channel groups</b><span>' + esc(s.countries.join(', ') || 'none') + '</span></button>' +
       '<button class="f setting" id="stSubs"><b>English subtitles</b><span>' + (s.englishSubs ? 'On' : 'Off') + '</span></button>' +
+      '<button class="f setting" id="stQuality"><b>Picture quality</b><span>' + (s.quality === 'best' ? 'Best available (4K first)' : 'Full HD first (steadier)') + '</span></button>' +
+      '<button class="f setting" id="stAdult"><b>Adult categories</b><span>' + (s.showAdult ? 'Shown' : 'Hidden') + '</span></button>' +
       '<button class="f setting" id="stRefresh"><b>Refresh lists</b><span>Fetch channels, movies and series again</span></button>' +
       '<button class="f setting" id="stAccount"><b>Account</b><span>' + esc(s.account ? s.account.username + ' @ ' + s.account.server.replace(/^https?:\/\//, '') : '') + '</span></button>' +
       '<button class="f setting" id="stLogout"><b>Sign out</b><span>Removes your login from this TV</span></button>' +
       '<p class="about">Beeldbuis ' + VERSION + ' · ' + esc(P.name) + '</p></div>';
     $('#stCountries').onclick = function () { showCountries(false); };
     $('#stSubs').onclick = function () { s.englishSubs = !s.englishSubs; S.save(); $('#stSubs span').textContent = s.englishSubs ? 'On' : 'Off'; };
-    $('#stRefresh').onclick = function () { S.cacheClear(); toast('Lists will be fetched again'); };
+    $('#stQuality').onclick = function () { s.quality = s.quality === 'best' ? 'fhd' : 'best'; S.save(); $('#stQuality span').textContent = s.quality === 'best' ? 'Best available (4K first)' : 'Full HD first (steadier)'; };
+    $('#stAdult').onclick = function () { s.showAdult = !s.showAdult; S.save(); SR.reset(); live.catId = null; vod.catId = null; $('#stAdult span').textContent = s.showAdult ? 'Shown' : 'Hidden'; };
+    $('#stRefresh').onclick = function () { S.cacheClear(); SR.reset(); toast('Lists will be fetched again'); };
     $('#stAccount').onclick = function () {
       busy(true);
       X.connections().then(function (c) {
@@ -434,10 +504,22 @@
     else N.first(screen);
   }
 
+  // which versions of a channel to try, in order. Full HD first (steadier than 4K/RAW on most lines), unless "Best available" is set.
+  var PREF = { FHD: 0, HD: 1, '': 1, SD: 2, '4K': 3, RAW: 4, '8K': 5 };
+  function order(g) {
+    var mode = S.get().quality;
+    if (g._order && g._orderMode === mode) return g._order;
+    g._orderMode = mode;
+    g._order = mode === 'best' ? g.variants.slice() : g.variants.slice().sort(function (a, b) {
+      var pa = PREF[a.q] !== undefined ? PREF[a.q] : 1, pb = PREF[b.q] !== undefined ? PREF[b.q] : 1;
+      return (pa - pb) || (a._i - b._i);
+    });
+    return g._order;
+  }
   function playLive(g, list, index, variantIdx) {
     if (!g || !g.variants || !g.variants.length) return;
     variantIdx = variantIdx || 0;
-    var v = g.variants[variantIdx];
+    var v = order(g)[variantIdx];
     if (play) { PL.stop(); }
     var item = liveItem(g);
     S.addRecent(item);
@@ -452,7 +534,7 @@
     playLive(play.list[i], play.list, i);
   }
   function osdLive() {
-    var g = play.group, v = g.variants[play.variant];
+    var g = play.group, v = order(g)[play.variant];
     $('#osdTitle').textContent = g.name;
     $('#osdSub').textContent = (v.q ? (v.q === '8K' ? '4K' : v.q) + ' · ' : '') + (play.list.length > 1 ? 'Channel ' + (play.index + 1) + ' of ' + play.list.length + ' · CH▲▼ to switch' : '');
     $('#osdProgress').classList.add('hidden');
@@ -510,7 +592,7 @@
       // live: try the next quality variant of the same channel first
       if (play.live && play.group && play.variant + 1 < play.group.variants.length && Date.now() - play.started < 20000) {
         var g = play.group, l = play.list, i = play.index, nv = play.variant + 1;
-        toast('Trying ' + (g.variants[nv].q || 'another') + ' version…', 2500);
+        toast('Trying ' + (order(g)[nv].q || 'another') + ' version…', 2500);
         playLive(g, l, i, nv);
         return;
       }
@@ -539,7 +621,7 @@
     if (t && t.tagName === 'INPUT') {
       if (a === 'back' && e.keyCode !== 10009 && e.keyCode !== 27) return;
       if (a === 'left' || a === 'right' || (typeof a === 'number')) return;
-      if (a === 'ok') { e.preventDefault(); var inputs = Array.prototype.slice.call(screen.querySelectorAll('input')), k = inputs.indexOf(t); if (k >= 0 && k < inputs.length - 1) N.focus(inputs[k + 1]); else { t.blur(); N.focus($('#btnLogin')); } return; }
+      if (a === 'ok') { e.preventDefault(); var inputs = Array.prototype.slice.call(screen.querySelectorAll('input')), k = inputs.indexOf(t); if (k >= 0 && k < inputs.length - 1) N.focus(inputs[k + 1]); else { t.blur(); if (t._done) t._done(); else N.focus($('#btnLogin')); } return; }
       if (a === 'back') { e.preventDefault(); t.blur(); return; }
     }
     if (typeof a === 'number' && t && t.tagName === 'INPUT') return;
@@ -587,7 +669,7 @@
       b.onclick = function () {
         var t = b.getAttribute('data-tab');
         if (t === 'home') showHome(); else if (t === 'live') showLive(); else if (t === 'movies') showVod('movies');
-        else if (t === 'series') showVod('series'); else showSettings();
+        else if (t === 'series') showVod('series'); else if (t === 'search') showSearch(); else showSettings();
       };
     });
   }

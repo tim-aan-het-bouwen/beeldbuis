@@ -59,16 +59,29 @@
     });
   }
 
+  // Lists are cached in IndexedDB with a time-to-live; parallel requests for the same list share one fetch.
+  var inflight = {};
   function cached(name, ttl, fetcher) {
-    var key = acct().username + '@' + base(acct()) + ':' + name, v = S.cacheGet(key, ttl);
-    if (v) return Promise.resolve(v);
-    return fetcher().then(function (x) { S.cacheSet(key, x); return x; });
+    var key = 'cache:' + acct().username + '@' + base(acct()) + ':' + name;
+    if (inflight[key]) return inflight[key];
+    var p = root.BBIdb.get(key).then(function (c) {
+      if (c && Date.now() - c.t < ttl) return c.v;
+      return fetcher().then(function (x) { root.BBIdb.set(key, { t: Date.now(), v: x }); return x; });
+    });
+    inflight[key] = p;
+    var done = function () { delete inflight[key]; };
+    p.then(done, done);
+    return p;
   }
   function list(x) { return Array.isArray(x) ? x : []; }
 
-  function liveCategories() { return cached('livecats', 12 * HOUR, function () { return api('get_live_categories').then(list); }); }
-  function vodCategories() { return cached('vodcats', 12 * HOUR, function () { return api('get_vod_categories').then(list); }); }
-  function seriesCategories() { return cached('sercats', 12 * HOUR, function () { return api('get_series_categories').then(list); }); }
+  // Adult categories stay hidden unless switched on in Settings.
+  var ADULT = /(^|[^a-z])(adult|xxx|porn|18\+|\+18)([^a-z]|$)/i;
+  function isAdult(c) { return String(c.is_adult) === '1' || ADULT.test(c.category_name || ''); }
+  function family(cats) { return S.get().showAdult ? cats : cats.filter(function (c) { return !isAdult(c); }); }
+  function liveCategories() { return cached('livecats', 12 * HOUR, function () { return api('get_live_categories').then(list); }).then(family); }
+  function vodCategories() { return cached('vodcats', 12 * HOUR, function () { return api('get_vod_categories').then(list); }).then(family); }
+  function seriesCategories() { return cached('sercats', 12 * HOUR, function () { return api('get_series_categories').then(list); }).then(family); }
 
   // Only the categories the viewer asked for are fetched: a full list can be 50,000+ channels,
   // too much for a TV. Each category is cached on its own.
@@ -123,7 +136,7 @@
   function vodUrl(id, ext) { var a = acct(); return base(a) + '/movie/' + encodeURIComponent(a.username) + '/' + encodeURIComponent(a.password) + '/' + id + '.' + (ext || 'mp4'); }
   function episodeUrl(id, ext) { var a = acct(); return base(a) + '/series/' + encodeURIComponent(a.username) + '/' + encodeURIComponent(a.password) + '/' + id + '.' + (ext || 'mp4'); }
 
-  root.BBXtream = { normalizeServer: normalizeServer, login: login, connections: connections, liveCategories: liveCategories,
+  root.BBXtream = { isAdult: isAdult, normalizeServer: normalizeServer, login: login, connections: connections, liveCategories: liveCategories,
     vodCategories: vodCategories, seriesCategories: seriesCategories, liveStreams: liveStreams, vodStreams: vodStreams,
     series: series, seriesInfo: seriesInfo, vodInfo: vodInfo, shortEpg: shortEpg, liveUrl: liveUrl, vodUrl: vodUrl, episodeUrl: episodeUrl };
 })(this);
