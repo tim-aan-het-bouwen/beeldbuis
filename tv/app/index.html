@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080, user-scalable=no">
+<title>Beeldbuis</title>
+<link rel="icon" href="img/icon-64.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="stage">
+  <object id="avplayer" type="application/avplayer" class="hidden"></object>
+  <video id="video" class="hidden" playsinline></video>
+
+  <header id="top" class="hidden">
+    <img class="wordmark" src="img/wordmark.png" alt="Beeldbuis">
+    <nav id="tabs">
+      <button class="f tab" data-tab="home">Home</button>
+      <button class="f tab" data-tab="live">Live TV</button>
+      <button class="f tab" data-tab="movies">Movies</button>
+      <button class="f tab" data-tab="series">Series</button>
+      <button class="f tab" data-tab="settings">Settings</button>
+    </nav>
+    <div id="clock"></div>
+  </header>
+
+  <main id="screen"></main>
+
+  <div id="osd" class="hidden">
+    <div class="osd-bar">
+      <div class="osd-title" id="osdTitle"></div>
+      <div class="osd-sub" id="osdSub"></div>
+      <div class="osd-progress hidden" id="osdProgress"><div id="osdFill"></div></div>
+      <div class="osd-time" id="osdTime"></div>
+    </div>
+  </div>
+  <div id="busy" class="hidden"><img src="img/icon-192.png" alt=""><div id="busyText">Loading…</div></div>
+  <div id="toast" class="hidden"></div>
+</div>
+<script src="js/hls.min.js"></script>
+<script src="js/groups.js"></script>
+<script src="js/platform.js"></script>
+<script src="js/store.js"></script>
+<script src="js/xtream.js"></script>
+<script src="js/player.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
