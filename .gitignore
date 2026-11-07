@@ -4,6 +4,7 @@ dist/
 # local test data (provider metadata cache, media)
 mac/test/mockcache/
 mac/test/media/
+tv/test/media/
 mac/test/xmltv.raw
 # never commit personal settings or credentials
 config.json
