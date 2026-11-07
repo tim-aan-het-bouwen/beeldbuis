@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beeldbuis</title>
+<link rel="manifest" href="/manifest.json">
+<script src="/assets/hls.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';document.head.appendChild(s)"></script>
+<link rel="icon" type="image/png" sizes="64x64" href="/assets/icon-64.png">
+<link rel="apple-touch-icon" href="/assets/icon-192.png">
+<meta name="theme-color" content="#0e0f12">
+<style>
+  :root{--bg:#0e0f12;--panel:#1d2026;--panel2:#262a33;--panel3:#2f343e;--line:#2f343e;--text:#f4e8c8;--muted:#a29c8a;--cream:#f4e8c8;--ochre:#f0b429;--orange:#e07a2f;--teal:#1d9e99;--teal2:#23b5af;--navy:#0e0f12;--danger:#e8604f;--ink:#000}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,Segoe UI,sans-serif;overflow:hidden}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  ::selection{background:var(--ochre);color:var(--navy)}
+  #app{display:grid;grid-template-rows:56px 1fr;height:100vh}
+  /* ---- header */
+  .topbar{display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--panel);border-bottom:2px solid var(--ink)}
+  .topbar .wordmark{height:38px;width:auto;display:block;flex:none}
+  .tabs{display:flex;gap:2px;margin-left:6px}
+  .tabs button{background:transparent;border:0;border-bottom:3px solid transparent;padding:16px 12px 13px;color:var(--muted);font-weight:600;letter-spacing:.01em}
+  .tabs button:hover{color:var(--text)}
+  .tabs button.active{color:var(--cream);border-bottom-color:var(--ochre)}
+  .tabs button.guide{color:var(--ochre)}
+  .topbar .spacer{flex:1}
+  .topbar .meta{color:var(--muted);font-size:12px;white-space:nowrap}
+  .btn{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 12px;white-space:nowrap;color:var(--text)}
+  .btn:hover{border-color:var(--teal)}
+  .btn.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}
+  .btn.primary:hover{background:var(--teal2)}
+  .btn.accent{background:var(--ochre);border-color:var(--ochre);color:var(--navy);font-weight:700}
+  .btn.danger{color:var(--danger)}
+  .btn.icon{padding:7px 9px;font-size:15px;line-height:1}
+  .btn.small{padding:4px 9px;font-size:12px;border-radius:7px}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.on{border-color:var(--ochre);color:var(--ochre)}
+  .recdot{color:var(--danger);font-weight:700;font-size:12px;animation:blink 1.6s infinite}
+  @keyframes blink{50%{opacity:.35}}
+  .rsec{padding:12px 12px 4px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:8px}
+  .rsec span{flex:1}
+  .item .sub{display:block;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .act{background:none;border:0;color:var(--muted);font-size:14px;padding:2px 5px;flex:none}
+  .item .act:hover{color:var(--danger)}
+  .item .cw{height:2px;background:var(--line);border-radius:1px;margin-top:3px;overflow:hidden}
+  .item .cw i{display:block;height:100%;background:var(--teal)}
+  .gp .rd{position:absolute;right:6px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--danger)}
+  .gp.cu .t::before{content:"↺ ";color:var(--teal)}
+  /* ---- body */
+  .body{display:grid;grid-template-columns:350px 1fr;min-height:0}
+  aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .controls{padding:12px 12px 8px;display:flex;flex-direction:column;gap:8px}
+  .controls input,.controls select,.sel{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 10px;outline:none;color:var(--text)}
+  .controls input::placeholder{color:var(--muted)}
+  .controls input:focus,.controls select:focus{border-color:var(--teal)}
+  #list{flex:1;overflow:auto;min-height:0;padding:0 6px 12px}
+  .item{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:9px;cursor:pointer;user-select:none}
+  .item:hover{background:var(--panel2)}
+  .item.active{background:var(--panel2);box-shadow:inset 3px 0 0 var(--ochre)}
+  .item img{width:38px;height:38px;object-fit:contain;border-radius:6px;background:#0a0b0d;flex:none}
+  .item .ph{width:38px;height:38px;border-radius:6px;background:#0a0b0d;flex:none;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px}
+  .item .name{flex:1;min-width:0}
+  .item .name .n{display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .name .n span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .now{display:block;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:1.2em}
+  .item .pbar{height:2px;background:var(--line);border-radius:1px;margin-top:3px;overflow:hidden;display:none}
+  .item .pbar i{display:block;height:100%;background:var(--ochre)}
+  .item .star{background:none;border:0;color:var(--muted);font-size:17px;padding:2px 4px;flex:none}
+  .item .star.on{color:var(--ochre)}
+  .badge{display:inline-block;flex:none;font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 5px;border-radius:4px;background:var(--panel3);color:var(--muted);line-height:1.4}
+  .badge.q4K,.badge.q8K{background:var(--ochre);color:var(--navy)}
+  .badge.qRAW{background:var(--orange);color:var(--navy)}
+  .badge.qFHD{background:var(--teal);color:#fff}
+  .badge.arch{background:transparent;border:1px solid var(--line)}
+  .more,.back{margin:8px;width:calc(100% - 16px);background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px;text-align:left;color:var(--text)}
+  .empty{color:var(--muted);padding:24px 12px;text-align:center}
+  .empty img{width:72px;height:72px;border-radius:16px;display:block;margin:0 auto 10px}
+  main{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+  .player{flex:1;background:#000;display:flex;align-items:center;justify-content:center;min-height:0;position:relative}
+  video{width:100%;height:100%;outline:none;background:#000}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:30px;pointer-events:none;background:var(--bg)}
+  .overlay.hidden{display:none}
+  .overlay .box{background:rgba(29,32,38,.92);border:1px solid var(--line);padding:22px 26px;border-radius:16px;max-width:520px;pointer-events:auto}
+  .overlay .box .err{color:var(--danger);margin-bottom:10px}
+  .overlay .mascot{width:128px;height:128px;border-radius:28px;display:block;margin:0 auto 14px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  .overlay .mascot.small{width:72px;height:72px;border-radius:16px;margin-bottom:12px}
+  .overlay .lead{color:var(--cream);font-size:16px;font-weight:600;margin-bottom:4px}
+  .spin{display:inline-block;width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--ochre);border-radius:50%;animation:sp .8s linear infinite;vertical-align:middle;margin-right:8px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .seek{display:none;align-items:center;gap:10px;padding:8px 14px;background:var(--panel);border-top:1px solid var(--line);font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted)}
+  .seek.on{display:flex}
+  .seek input{flex:1;accent-color:var(--ochre)}
+  .infobar{padding:10px 14px 12px;border-top:1px solid var(--line);background:var(--panel);min-height:104px}
+  .infobar .trow{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .infobar .title{font-weight:700;font-size:15px;color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+  .epg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .epg .lbl{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  .epg .t{font-weight:600;margin:2px 0}
+  .epg .d{color:var(--muted);font-size:12px;max-height:3.9em;overflow:hidden}
+  .bar{height:3px;background:var(--line);border-radius:2px;margin-top:6px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--ochre);width:0}
+  /* ---- dropdown menu */
+  .menu{position:absolute;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px;z-index:30;min-width:220px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  .menu.hidden{display:none}
+  .menu .mi{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;white-space:nowrap}
+  .menu .mi:hover{background:var(--panel3)}
+  .menu .mi.on{color:var(--ochre)}
+  .menu .mi .sub{color:var(--muted);font-size:12px;margin-left:auto;padding-left:10px}
+  .menu .mh{padding:4px 10px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  /* ---- toast */
+  #toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:50}
+  .toast{background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--ochre);border-radius:10px;padding:10px 14px;max-width:360px;box-shadow:0 10px 30px rgba(0,0,0,.5);animation:fade .25s ease}
+  .toast.warn{border-left-color:var(--orange)}
+  .toast.err{border-left-color:var(--danger)}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  /* ---- modal */
+  .modal{position:fixed;inset:0;background:rgba(5,6,8,.78);display:flex;align-items:center;justify-content:center;z-index:40}
+  .modal.hidden{display:none}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px;width:440px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .card.wide{width:640px;max-height:88vh;display:flex;flex-direction:column}
+  .card .brand{display:block;width:100%;max-width:380px;margin:0 auto 10px}
+  .card h2{margin:0 0 4px;font-size:18px;color:var(--cream)}
+  .card h3{margin:16px 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  .card p{margin:0 0 14px;color:var(--muted);font-size:13px}
+  .card label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  .card input[type=text],.card input[type=password],.card input:not([type]),.card select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px;outline:none;color:var(--text)}
+  .card input:focus{border-color:var(--teal)}
+  .card .row{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;align-items:center}
+  .card .msg{color:var(--danger);font-size:13px;min-height:1.2em;margin-top:8px}
+  .card .scroll{overflow:auto;min-height:0;flex:1}
+  .ctry{border:1px solid var(--line);border-radius:9px;margin:6px 0;overflow:hidden}
+  .ctry .hd{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--panel2);cursor:pointer}
+  .ctry .hd b{flex:1}
+  .ctry .hd .cnt{color:var(--muted);font-size:12px}
+  .ctry .cats{display:none;padding:4px 10px 8px 30px}
+  .ctry.open .cats{display:block}
+  .ctry .cats label{display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px;color:var(--text)}
+  .ctry input[type=checkbox]{accent-color:var(--teal);width:15px;height:15px}
+  .season{padding:10px 12px 4px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+  .hint{color:var(--muted);font-size:12px}
+  kbd{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:0 5px;font-size:11px;color:var(--cream)}
+  /* ---- guide */
+  #guide{position:fixed;inset:0;top:56px;background:var(--bg);z-index:20;display:flex;flex-direction:column}
+  #guide.hidden{display:none}
+  .gbar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+  .gbar .days{display:flex;gap:4px}
+  .gbar .days button{background:transparent;border:1px solid transparent;border-radius:8px;padding:6px 10px;color:var(--muted);font-weight:600}
+  .gbar .days button.on{background:var(--panel2);color:var(--cream);border-color:var(--line)}
+  .gbar input{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:8px 10px;outline:none;color:var(--text);width:240px}
+  .gbar select{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:8px 10px;color:var(--text);max-width:260px}
+  .gbar .spacer{flex:1}
+  .gwrap{flex:1;overflow:auto;position:relative;min-height:0}
+  .grid{position:relative;display:grid;grid-template-columns:220px 1fr;min-width:max-content}
+  .gch{position:sticky;left:0;z-index:3;background:var(--panel);border-right:1px solid var(--line);border-bottom:1px solid var(--line);height:58px;display:flex;align-items:center;gap:8px;padding:0 10px;cursor:pointer}
+  .gch:hover{background:var(--panel2)}
+  .gch img{width:30px;height:30px;object-fit:contain;border-radius:5px;background:#0a0b0d;flex:none}
+  .gch .n{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gch .s{font-size:11px;color:var(--muted)}
+  .grow{position:relative;height:58px;border-bottom:1px solid var(--line)}
+  .gp{position:absolute;top:5px;height:48px;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:5px 8px;overflow:hidden;cursor:pointer;font-size:12px}
+  .gp:hover{border-color:var(--teal);background:var(--panel3)}
+  .gp .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream)}
+  .gp .tm{color:var(--muted);font-size:11px;white-space:nowrap}
+  .gp.past{opacity:.55}
+  .gp.live{border-color:var(--ochre);box-shadow:inset 0 0 0 1px var(--ochre)}
+  .gp.arch{background:linear-gradient(var(--panel2),var(--panel2)) padding-box}
+  .gp .ic{position:absolute;right:6px;top:5px;font-size:10px;color:var(--teal)}
+  .ghead{position:sticky;top:0;z-index:4;background:var(--panel);border-bottom:1px solid var(--line);height:30px}
+  .ghead.corner{left:0;z-index:5;border-right:1px solid var(--line);display:flex;align-items:center;padding:0 10px;color:var(--muted);font-size:12px}
+  .ghead .hr{position:absolute;top:0;height:30px;border-left:1px solid var(--line);padding:6px 6px;font-size:12px;color:var(--muted);white-space:nowrap}
+  .nowline{position:absolute;top:0;bottom:0;width:2px;background:var(--ochre);z-index:2;pointer-events:none}
+  .gres{padding:8px 14px}
+  .gres .r{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px;cursor:pointer}
+  .gres .r:hover{background:var(--panel2)}
+  .gres .r .tm{color:var(--muted);font-size:12px;width:150px;flex:none;font-variant-numeric:tabular-nums}
+  .gres .r .ch{color:var(--muted);font-size:12px;width:200px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gres .r .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pcard{position:fixed;z-index:35;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;width:460px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .pcard.hidden{display:none}
+  .pcard .ch{color:var(--muted);font-size:12px}
+  .pcard h3{margin:4px 0 2px;font-size:17px;color:var(--cream)}
+  .pcard .tm{color:var(--ochre);font-size:13px;margin-bottom:8px}
+  .pcard .d{color:var(--text);font-size:13px;max-height:200px;overflow:auto;line-height:1.5}
+  .pcard .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <img class="wordmark" src="/assets/wordmark.png" alt="Beeldbuis" draggable="false">
+    <nav class="tabs">
+      <button data-tab="live" class="active">Live</button>
+      <button data-tab="vod">Movies</button>
+      <button data-tab="series">Series</button>
+      <button data-tab="rec">Recordings</button>
+      <button class="guide" id="btnGuide" title="TV guide (g)">Guide</button>
+    </nav>
+    <div class="spacer"></div>
+    <span id="recDot" class="recdot" style="display:none" title="Recording">● REC</span>
+    <div class="meta" id="meta"></div>
+    <button class="btn icon" id="btnFull" title="Full screen (f)">⛶</button>
+    <button class="btn icon" id="btnSettings" title="Settings">⚙</button>
+    <button class="btn" id="btnAccount">Account</button>
+  </header>
+  <div class="body">
+  <aside>
+    <div class="controls">
+      <input id="search" type="search" placeholder="Search channels…" autocomplete="off">
+      <select id="cat"></select>
+    </div>
+    <div id="list"><div class="empty">Loading…</div></div>
+  </aside>
+  <main>
+    <div class="player">
+      <video id="video" controls autoplay playsinline></video>
+      <div class="overlay" id="overlay"><div class="box"><img class="mascot" src="/assets/icon-192.png" alt=""><div class="lead">Pick a channel to start</div><span class="hint"><kbd>↑</kbd> <kbd>↓</kbd> zap · <kbd>g</kbd> guide · <kbd>f</kbd> full screen · <kbd>space</kbd> pause</span></div></div>
+    </div>
+    <div class="seek" id="seek"><span id="tCur">0:00</span><input id="seekBar" type="range" min="0" max="100" value="0" step="1"><span id="tDur">0:00</span></div>
+    <div class="infobar" id="infobar">
+      <div class="trow"><div class="title" id="title">Nothing playing</div><button class="btn small" id="btnCC" style="display:none" title="English subtitles on/off">CC</button><button class="btn small" id="btnQuality" style="display:none">Quality</button></div>
+      <div id="epgbox"><span class="hint">No programme information</span></div>
+    </div>
+  </main>
+  </div>
+</div>
+
+<div class="menu hidden" id="qmenu"></div>
+<div id="toasts"></div>
+
+<!-- TV guide -->
+<div id="guide" class="hidden">
+  <div class="gbar">
+    <div class="days" id="gdays"></div>
+    <select id="gscope"></select>
+    <input id="gsearch" type="search" placeholder="Search programmes…" autocomplete="off">
+    <div class="spacer"></div>
+    <span class="hint" id="gstatus"></span>
+    <button class="btn" id="gclose">Close</button>
+  </div>
+  <div class="gwrap" id="gwrap"></div>
+</div>
+<div class="pcard hidden" id="pcard"></div>
+
+<!-- login -->
+<div class="modal hidden" id="loginModal">
+  <div class="card">
+    <img class="brand" src="/assets/wordmark-mascot.png" alt="Beeldbuis" draggable="false">
+    <h2>Sign in to your IPTV provider</h2>
+    <p>Xtream Codes details. They are stored on this Mac only.</p>
+    <label>Server (e.g. http://host.example:8080)</label>
+    <input id="fServer" placeholder="http://…" autocomplete="off">
+    <label>Username</label>
+    <input id="fUser" autocomplete="off">
+    <label>Password</label>
+    <input id="fPass" type="password" autocomplete="off">
+    <div class="msg" id="loginMsg"></div>
+    <div class="row">
+      <button class="btn danger" id="btnLogout" style="margin-right:auto;display:none">Sign out</button>
+      <button class="btn" id="btnQuit" style="display:none" title="Restart the player service">Restart player</button>
+      <button class="btn" id="btnCancel" style="display:none">Cancel</button>
+      <button class="btn primary" id="btnLogin">Sign in</button>
+    </div>
+  </div>
+</div>
+
+<!-- settings -->
+<div class="modal hidden" id="settingsModal">
+  <div class="card wide">
+    <h2>Settings</h2>
+    <div class="scroll">
+      <h3>Playback</h3>
+      <label>Preferred quality for live TV</label>
+      <select id="sQuality">
+        <option value="best">Best available (4K / RAW when offered)</option>
+        <option value="FHD">Full HD, fall back to HD</option>
+        <option value="HD">HD</option>
+      </select>
+      <p class="hint" style="margin-top:6px">When a stream stutters, Beeldbuis switches to the next lower quality by itself. You can always pick a quality by hand with the Quality button under the player.</p>
+      <label><input type="checkbox" id="sSubs" style="accent-color:var(--teal);width:15px;height:15px;vertical-align:-2px"> English subtitles on by default (movies, series and recordings with an English subtitle track)</label>
+      <h3>Recording</h3>
+      <div style="display:flex;gap:12px"><div style="flex:1"><label>Start early (minutes)</label><select id="sRecBefore"><option>0</option><option>1</option><option>2</option><option>5</option><option>10</option></select></div>
+      <div style="flex:1"><label>Stop late (minutes)</label><select id="sRecAfter"><option>0</option><option>5</option><option>10</option><option>15</option><option>30</option><option>60</option></select></div></div>
+      <p class="hint" id="sRecInfo" style="margin-top:6px"></p>
+      <h3>Channel categories <span class="hint" id="sHiddenInfo"></span></h3>
+      <p class="hint">Untick what you never watch; those channels disappear from the lists and the guide. <button class="btn small" id="sOnlyNLUK">Keep only NL and UK</button> <button class="btn small" id="sAll">Show everything</button></p>
+      <div id="sCats"></div>
+      <h3>Data</h3>
+      <p class="hint" id="sData"></p>
+      <p><button class="btn small" id="sRefreshChannels">Refresh channel list</button> <button class="btn small" id="sRefreshEpg">Refresh TV guide now</button></p>
+    </div>
+    <div class="row">
+      <span class="hint" style="margin-right:auto">Beeldbuis v<span id="sVersion"></span></span>
+      <button class="btn" id="sCancel">Cancel</button>
+      <button class="btn primary" id="sSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const video = $('#video'), listEl = $('#list'), catEl = $('#cat'), searchEl = $('#search');
+const overlay = $('#overlay'), seekEl = $('#seek'), seekBar = $('#seekBar');
+let tab = 'live', cats = [], items = [], favorites = [], current = null, limit = 300;
+let seriesView = null, epgTimer = null, loggedIn = false, playToken = 0;
+let settings = { quality: 'FHD', hidden_cats: [] };
+let catalog = { cats: [], groups: [], t: 0 };      // live channels, variants merged
+let epgIndex = {};                                 // xmltv id -> [group keys]
+let status = {};
+let positions = {};
+function fmtSize(b){ return b > 1e9 ? (b/1e9).toFixed(1) + ' GB' : b > 1e6 ? Math.round(b/1e6) + ' MB' : Math.round(b/1e3) + ' kB'; }
+const ls = { get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+
+async function api(path, opts) {
+  let r;
+  try { r = await fetch(path, opts); }
+  catch (e) { const err = new Error('No connection to the player'); err.offline = true; throw err; }
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'Unknown error');
+  return j.data;
+}
+const post = (path, body) => api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})});
+let offlineTimer = null;
+function goOffline(){
+  if (offlineTimer) return;
+  $('#loginModal').classList.add('hidden');
+  showOverlay('<img class="mascot small" src="/assets/icon-192.png" alt=""><div class="err">The player service is not reachable.</div>Open Beeldbuis again from its app icon; this window will reconnect by itself.<br><br><span class="spin"></span>Reconnecting…');
+  offlineTimer = setInterval(async () => {
+    try { await api('/api/ping'); clearInterval(offlineTimer); offlineTimer = null; hideOverlay(); checkStatus(); } catch {}
+  }, 3000);
+}
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showOverlay(html){ overlay.innerHTML = '<div class="box">'+html+'</div>'; overlay.classList.remove('hidden'); }
+function hideOverlay(){ overlay.classList.add('hidden'); }
+function fmtTime(ts){ if(!ts) return ''; return new Date(ts*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDay(ts){ const d = new Date(ts*1000), t = new Date(); t.setHours(0,0,0,0); const dd = new Date(d); dd.setHours(0,0,0,0); const diff = Math.round((dd - t)/86400000);
+  if (diff === 0) return 'Today'; if (diff === 1) return 'Tomorrow'; if (diff === -1) return 'Yesterday';
+  return d.toLocaleDateString('en-GB',{weekday:'short', day:'numeric', month:'short'}); }
+function fmtDateTime(ts){ return fmtDay(ts) + ' ' + fmtTime(ts); }
+function fmtDur(s){ s=Math.max(0,Math.floor(s||0)); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0'); }
+function ago(ts){ if (!ts) return 'never'; const m = Math.round((Date.now()/1000 - ts)/60); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m/60) + ' h ago' : Math.round(m/1440) + ' days ago'; }
+function toast(msg, kind, ms){ const d = document.createElement('div'); d.className = 'toast ' + (kind||''); d.innerHTML = msg; $('#toasts').appendChild(d); setTimeout(() => d.remove(), ms || 5000); }
+function renderMeta(){ const d = $('#meta').dataset; $('#meta').textContent = [d.buf, d.base].filter(Boolean).join(' · '); }
+
+// ---------- login / status
+async function checkStatus(){
+  try {
+    const s = status = await api('/api/status');
+    loggedIn = s.logged_in;
+    if (loggedIn) {
+      $('#loginModal').classList.add('hidden');
+      $('#fServer').value = s.server; $('#fUser').value = s.username;
+      let m = [];
+      if (s.exp_date) m.push('expires ' + new Date(s.exp_date*1000).toLocaleDateString('en-GB'));
+      if (s.max_connections) m.push(s.active_cons + '/' + s.max_connections + ' conn.');
+      if (!s.ffmpeg) m.push('⚠ ffmpeg missing');
+      $('#meta').dataset.base = m.join(' · '); renderMeta();
+      settings = Object.assign({ quality: 'FHD', hidden_cats: [] }, await api('/api/settings'));
+      try { positions = await api('/api/positions'); } catch {}
+      await loadRecordings();
+      await loadTab();
+    } else $('#loginModal').classList.remove('hidden');
+  } catch (e) {
+    if (e.offline) return goOffline();
+    $('#loginModal').classList.remove('hidden');
+    $('#loginMsg').textContent = e.message;
+  }
+}
+$('#btnLogin').onclick = async () => {
+  $('#loginMsg').textContent = 'Connecting…';
+  try {
+    await post('/api/login', {server:$('#fServer').value, username:$('#fUser').value, password:$('#fPass').value});
+    $('#loginMsg').textContent = '';
+    await checkStatus();
+  } catch (e) { if (e.offline) return goOffline(); $('#loginMsg').textContent = e.message; }
+};
+['#fServer','#fUser','#fPass'].forEach(s => $(s).addEventListener('keydown', e => { if (e.key==='Enter') $('#btnLogin').click(); }));
+$('#btnAccount').onclick = () => {
+  ['#btnLogout','#btnCancel','#btnQuit'].forEach(s => $(s).style.display = loggedIn ? '' : 'none');
+  $('#loginModal').classList.remove('hidden');
+};
+$('#btnCancel').onclick = () => $('#loginModal').classList.add('hidden');
+$('#btnQuit').onclick = async () => { stopPlayback(); $('#loginModal').classList.add('hidden'); await fetch('/api/quit',{method:'POST'}).catch(()=>{}); goOffline(); };
+$('#btnLogout').onclick = async () => {
+  await fetch('/api/logout', {method:'POST'}); stopPlayback(); items=[]; cats=[]; catalog = {cats:[],groups:[],t:0}; render();
+  $('#fPass').value=''; ['#btnLogout','#btnCancel','#btnQuit'].forEach(s => $(s).style.display='none');
+  loggedIn = false; $('#meta').textContent='';
+};
+
+// ---------- channel catalogue (live)
+function hidden(cid){ return settings.hidden_cats.includes(String(cid)); }
+function visibleVariants(g){ return g.variants.filter(v => !hidden(v.cat)); }
+function visibleGroups(){ return catalog.groups.filter(g => g.cats.some(c => !hidden(c))); }
+async function loadCatalog(){
+  let tries = 0;
+  while (true) {
+    const d = await api('/api/channels');
+    if (d.groups && d.groups.length) { catalog = d; break; }
+    if (d.error && !d.groups.length) throw new Error('Channel list could not be loaded: ' + d.error);
+    if (++tries > 90) throw new Error('Channel list is taking too long; try again in a minute.');
+    listEl.innerHTML = '<div class="empty"><span class="spin"></span>Fetching the channel list from your provider…</div>';
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  epgIndex = {};
+  catalog.groups.forEach(g => { if (g.epg) (epgIndex[g.epg] = epgIndex[g.epg] || []).push(g.key); });
+  catalog.byKey = {}; catalog.groups.forEach(g => catalog.byKey[g.key] = g);
+}
+function catOptions(sel, extra){
+  const vis = catalog.cats.filter(c => !hidden(c.id) && c.n > 0);
+  const byCountry = {};
+  vis.forEach(c => (byCountry[c.country] = byCountry[c.country] || []).push(c));
+  let html = extra || '';
+  Object.keys(byCountry).sort((a,b) => (a==='NL'?-1:b==='NL'?1:a==='UK'?-1:b==='UK'?1:a.localeCompare(b))).forEach(k => {
+    html += `<optgroup label="${esc(k)}">` + byCountry[k].map(c => `<option value="${esc(c.id)}">${esc(c.name.replace(/^[^|]*\|\s*/, ''))} (${c.n})</option>`).join('') + '</optgroup>';
+  });
+  sel.innerHTML = html;
+}
+
+// ---------- data
+async function loadTab(){
+  seriesView = null;
+  listEl.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    favorites = await api('/api/favorites');
+    if (tab === 'rec') {
+      await loadRecordings();
+      catEl.innerHTML = '<option value="">All recordings</option>';
+      items = recordings.items;
+    } else if (tab === 'live') {
+      await loadCatalog();
+      const prev = catEl.value || ls.get('cat:live', favorites.some(k => k.startsWith('ch:')) ? '__fav' : '');
+      catOptions(catEl, '<option value="__fav">★ Favourites</option><option value="">All channels</option>');
+      catEl.value = [...catEl.options].some(o => o.value===prev) ? prev : '';
+      items = visibleGroups();
+    } else {
+      const base = tab==='vod' ? '/api/vod' : '/api/series';
+      const [c, s] = await Promise.all([api(base+'/categories'), api(base + (tab==='series'?'/list':'/streams'))]);
+      cats = Array.isArray(c) ? c : [];
+      items = Array.isArray(s) ? s : [];
+      const prev = catEl.value;
+      catEl.innerHTML = '<option value="">All categories</option><option value="__fav">★ Favourites</option>' +
+        cats.map(x => `<option value="${esc(x.category_id)}">${esc(x.category_name)}</option>`).join('');
+      if ([...catEl.options].some(o => o.value===prev)) catEl.value = prev;
+    }
+    limit = 300; render();
+  } catch (e) {
+    if (e.offline) return goOffline();
+    listEl.innerHTML = '<div class="empty">'+esc(e.message)+'</div>';
+  }
+}
+function idOf(x){ return x.key ?? x.stream_id ?? x.series_id; }
+function favKey(x){ return x.key ? 'ch:' + x.key : tab + ':' + idOf(x); }
+function filtered(){
+  const q = searchEl.value.trim().toLowerCase(), cat = catEl.value;
+  return items.filter(x => {
+    if (cat === '__fav') { if (!favorites.includes(favKey(x))) return false; }
+    else if (cat) { if (x.key ? !x.cats.includes(cat) || !x.variants.some(v => v.cat === cat) : String(x.category_id) !== cat) return false; }
+    if (q && !String(x.name||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+let nowTimer = null;
+function render(){
+  if (seriesView) return renderSeries();
+  if (tab === 'rec') return renderRecordings();
+  const rows = filtered();
+  if (!rows.length) { listEl.innerHTML = '<div class="empty"><img src="/assets/icon-192.png" alt="">' + (catEl.value==='__fav' ? 'No favourites yet. Click ☆ next to a channel.' : 'Nothing found') + '</div>'; return; }
+  const frag = document.createDocumentFragment();
+  rows.slice(0, limit).forEach(x => {
+    const key = favKey(x), isFav = favorites.includes(key);
+    const div = document.createElement('div');
+    div.className = 'item' + (current && current.key===key ? ' active' : '');
+    div.dataset.key = key;
+    const icon = x.icon || x.stream_icon || x.cover;
+    const best = x.key ? bestQuality(x) : '';
+    div.innerHTML = (icon ? `<img loading="lazy" src="${esc(icon)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'tv'}))">` : '<div class="ph">tv</div>') +
+      `<div class="name"><div class="n"><span title="${esc(x.name)}">${esc(x.name)}</span>${best ? `<i class="badge q${esc(best)}">${esc(best)}</i>` : ''}${x.archive ? `<i class="badge arch" title="Catch-up available (${x.archive} days)">↺</i>` : ''}</div>` +
+      (x.key ? `<span class="now" data-epg="${esc(x.epg)}"></span><div class="pbar"><i></i></div>` : '') + `</div>` +
+      `<button class="star ${isFav?'on':''}" title="Favourite">${isFav?'★':'☆'}</button>`;
+    div.querySelector('.star').onclick = ev => { ev.stopPropagation(); toggleFav(key); };
+    div.onclick = () => tab==='series' ? openSeries(x) : play(x);
+    frag.appendChild(div);
+  });
+  listEl.innerHTML = '';
+  if ((tab === 'vod' || tab === 'series') && !catEl.value && !searchEl.value.trim()) listEl.appendChild(continueWatching(tab));
+  listEl.appendChild(frag);
+  if (rows.length > limit) {
+    const b = document.createElement('button'); b.className='more';
+    b.textContent = `Show more (${rows.length - limit} hidden)`;
+    b.onclick = () => { limit += 300; render(); };
+    listEl.appendChild(b);
+  }
+  if (tab === 'live') { fillNowNext(); if (!nowTimer) nowTimer = setInterval(() => { if (tab==='live' && !seriesView) fillNowNext(); }, 60000); }
+}
+function continueWatching(kind){
+  const frag = document.createDocumentFragment();
+  const want = kind === 'vod' ? ['movie'] : ['series'];
+  const rows = Object.entries(positions).filter(([k, v]) => v && want.includes(v.kind)).sort((a,b) => (b[1].updated||0) - (a[1].updated||0)).slice(0, 8);
+  if (!rows.length) return frag;
+  const h = document.createElement('div'); h.className = 'rsec'; h.innerHTML = '<span>Continue watching</span>'; frag.appendChild(h);
+  rows.forEach(([key, v]) => {
+    const div = document.createElement('div'); div.className = 'item'; div.dataset.key = key;
+    const pct = v.dur ? Math.min(100, Math.round(v.t / v.dur * 100)) : 0;
+    div.innerHTML = (v.icon ? `<img loading="lazy" src="${esc(v.icon)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'▶'}))">` : '<div class="ph">▶</div>') +
+      `<div class="name"><div class="n"><span title="${esc(v.name)}">${esc(v.name)}</span></div><span class="sub">${fmtDur(v.t)}${v.dur ? ' of ' + fmtDur(v.dur) : ''} · ${esc(ago(v.updated))}</span><div class="cw"><i style="width:${pct}%"></i></div></div>` +
+      `<button class="act" title="Remove from continue watching">✕</button>`;
+    div.querySelector('.act').onclick = async ev => { ev.stopPropagation(); positions[key] = null; await post('/api/progress', { key, remove: true }); render(); };
+    div.onclick = () => play({ name: v.name, stream_id: v.sid, container_extension: v.ext, _kind: v.kind, _key: key, _series: v.series, icon: v.icon });
+    frag.appendChild(div);
+  });
+  const sep = document.createElement('div'); sep.className = 'rsec'; sep.innerHTML = '<span>' + (kind === 'vod' ? 'All movies' : 'All series') + '</span>'; frag.appendChild(sep);
+  return frag;
+}
+function renderRecordings(){
+  const q = searchEl.value.trim().toLowerCase();
+  const items = recordings.items.filter(r => !q || (r.title + ' ' + r.channel).toLowerCase().includes(q));
+  listEl.innerHTML = '';
+  if (!items.length) { listEl.innerHTML = '<div class="empty"><img src="/assets/icon-192.png" alt="">No recordings yet.<br><span class="hint">Open the guide (g), click a programme and choose Record.</span></div>'; return; }
+  const secs = [['Recording now', items.filter(r => r.status === 'recording')], ['Scheduled', items.filter(r => r.status === 'scheduled').sort((a,b) => a.start - b.start)],
+                ['Recorded', items.filter(r => r.status === 'done')], ['Failed or cancelled', items.filter(r => ['failed','cancelled'].includes(r.status))]];
+  const frag = document.createDocumentFragment();
+  secs.forEach(([title, rows]) => {
+    if (!rows.length) return;
+    const h = document.createElement('div'); h.className = 'rsec'; h.innerHTML = `<span>${title} (${rows.length})</span>` + (title === 'Recorded' && recordings.free ? `<span class="hint" style="flex:none;text-transform:none;letter-spacing:0">${fmtSize(recordings.free)} free</span>` : ''); frag.appendChild(h);
+    rows.forEach(r => {
+      const div = document.createElement('div'); div.className = 'item' + (current && current.key === 'rec:' + r.id ? ' active' : ''); div.dataset.key = 'rec:' + r.id;
+      const pos = positions['rec:' + r.id], pct = pos && pos.dur ? Math.min(100, Math.round(pos.t / pos.dur * 100)) : 0;
+      const sub = r.status === 'scheduled' ? `${esc(fmtDateTime(r.start))}–${fmtTime(r.stop)} · ${esc(r.channel)}` :
+                  r.status === 'recording' ? `<span style="color:var(--danger)">● recording</span> · since ${fmtTime(r.start)} · ${esc(r.channel)} · ${fmtSize(r.size||0)}` :
+                  r.status === 'done' ? `${esc(fmtDateTime(r.start))} · ${esc(r.channel)} · ${fmtSize(r.size||0)}${r.duration ? ' · ' + fmtDur(r.duration) : ''}` :
+                  `${esc(fmtDateTime(r.start))} · ${esc(r.channel)} · ${esc(r.status)}${r.error ? ': ' + esc(r.error) : ''}`;
+      div.innerHTML = (r.icon ? `<img loading="lazy" src="${esc(r.icon)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'●'}))">` : '<div class="ph">●</div>') +
+        `<div class="name"><div class="n"><span title="${esc(r.title)}">${esc(r.title)}</span></div><span class="sub">${sub}</span>${pct ? `<div class="cw"><i style="width:${pct}%"></i></div>` : ''}</div>` +
+        `<button class="act" title="${r.status === 'scheduled' || r.status === 'recording' ? 'Cancel' : 'Delete'}">${r.status === 'scheduled' || r.status === 'recording' ? '✕' : '🗑'}</button>`;
+      div.querySelector('.act').onclick = async ev => {
+        ev.stopPropagation();
+        try {
+          if (r.status === 'scheduled') { await post('/api/record/cancel', { id: r.id }); toast('Recording cancelled.'); }
+          else if (r.status === 'recording') { if (!confirm('Stop recording “' + r.title + '”? What has been recorded so far is kept.')) return; await post('/api/record/cancel', { id: r.id }); toast('Recording stopped.'); }
+          else { if (!confirm('Delete “' + r.title + '”' + (r.file ? ' and its file' : '') + '?')) return; if (current && current.key === 'rec:' + r.id) stopPlayback(); await post('/api/record/delete', { id: r.id }); positions['rec:' + r.id] = null; toast('Deleted.'); }
+          await loadRecordings(); render();
+        } catch (e) { toast(esc(e.message), 'err'); }
+      };
+      div.onclick = () => { if (r.status === 'done' || r.status === 'recording') play(Object.assign({ _kind: 'rec' }, r)); else if (r.status === 'scheduled') toast('Scheduled for ' + fmtDateTime(r.start) + '.'); };
+      frag.appendChild(div);
+    });
+  });
+  listEl.appendChild(frag);
+}
+function bestQuality(g){ const v = visibleVariants(g); return v.length ? (v[0].q === '8K' ? '4K' : v[0].q) : ''; }
+async function fillNowNext(){
+  const els = [...listEl.querySelectorAll('.now[data-epg]')].filter(e => e.dataset.epg);
+  const ids = [...new Set(els.map(e => e.dataset.epg))];
+  if (!ids.length) return;
+  try {
+    const d = await api('/api/epg/now?ids=' + encodeURIComponent(ids.join(',')));
+    const now = Date.now()/1000;
+    els.forEach(e => {
+      const x = d[e.dataset.epg]; if (!x || !x.now) { e.textContent = ''; return; }
+      e.textContent = x.now.title + (x.next ? '  ·  ' + fmtTime(x.next.start) + ' ' + x.next.title : '');
+      const bar = e.nextElementSibling; if (bar) { bar.style.display = 'block'; bar.firstElementChild.style.width = Math.min(100, Math.max(0, (now - x.now.start) / Math.max(1, x.now.stop - x.now.start) * 100)) + '%'; }
+    });
+  } catch {}
+}
+async function toggleFav(key){
+  favorites = favorites.includes(key) ? favorites.filter(k => k!==key) : [...favorites, key];
+  await post('/api/favorites', {favorites});
+  render();
+}
+searchEl.oninput = () => { limit = 300; render(); };
+catEl.onchange = () => { limit = 300; if (tab==='live') ls.set('cat:live', catEl.value); render(); };
+document.querySelectorAll('.tabs button[data-tab]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button[data-tab]').forEach(x => x.classList.toggle('active', x===b));
+  tab = b.dataset.tab; searchEl.value=''; catEl.value=''; searchEl.placeholder = tab==='live' ? 'Search channels…' : tab==='vod' ? 'Search movies…' : tab==='rec' ? 'Search recordings…' : 'Search series…'; loadTab();
+});
+
+// ---------- series
+async function openSeries(x){
+  listEl.innerHTML = '<div class="empty">Loading…</div>';
+  try { seriesView = { series: x, info: await api('/api/series/info?id=' + x.series_id) }; renderSeries(); }
+  catch (e) { listEl.innerHTML = '<div class="empty">'+esc(e.message)+'</div>'; }
+}
+function renderSeries(){
+  const { series, info } = seriesView, eps = info.episodes || {};
+  const frag = document.createDocumentFragment();
+  const back = document.createElement('button'); back.className='back'; back.textContent = '← Back to series';
+  back.onclick = () => { seriesView = null; render(); };
+  frag.appendChild(back);
+  const h = document.createElement('div'); h.className='season'; h.textContent = series.name; frag.appendChild(h);
+  Object.keys(eps).sort((a,b)=>a-b).forEach(season => {
+    const sh = document.createElement('div'); sh.className='season'; sh.textContent = 'Season ' + season; frag.appendChild(sh);
+    (eps[season]||[]).forEach(ep => {
+      const div = document.createElement('div'); div.className='item';
+      const key = 'ep:' + ep.id;
+      div.innerHTML = `<div class="ph">${esc(ep.episode_num)}</div><div class="name"><div class="n"><span title="${esc(ep.title)}">${esc(ep.title||('Episode '+ep.episode_num))}</span></div></div>`;
+      div.classList.toggle('active', current && current.key===key);
+      div.onclick = () => play(episodeItem(series, eps, season, ep));
+      frag.appendChild(div);
+    });
+  });
+  listEl.innerHTML = ''; listEl.appendChild(frag);
+}
+
+function episodeItem(series, eps, season, ep){
+  const list = []; Object.keys(eps).sort((a,b)=>a-b).forEach(sn => (eps[sn]||[]).forEach(e => list.push([sn, e])));
+  const i = list.findIndex(([sn, e]) => e.id === ep.id), nx = list[i + 1];
+  const item = { name: series.name + ' — S' + season + 'E' + ep.episode_num + (ep.title ? ' ' + ep.title : ''), stream_id: ep.id, container_extension: ep.container_extension,
+    _kind: 'series', _key: 'ep:' + ep.id, _series: series.series_id, icon: series.cover || '' };
+  if (nx) item._next = episodeItem(series, eps, nx[0], nx[1]);
+  return item;
+}
+
+// ---------- quality choice for merged channels
+const QORDER = { best: ['4K','8K','RAW','FHD','HD','','SD'], FHD: ['FHD','HD','','4K','8K','RAW','SD'], HD: ['HD','','FHD','4K','8K','RAW','SD'] };
+function pickVariant(g){
+  const vars = visibleVariants(g);
+  if (!vars.length) return null;
+  const manual = ls.get('q:' + g.key, null);
+  if (manual) { const v = vars.find(v => v.id === manual); if (v) return v; }
+  const order = QORDER[settings.quality] || QORDER.FHD;
+  for (const q of order) { const v = vars.find(v => v.q === q); if (v) return v; }
+  return vars[0];
+}
+function fallbackChain(g, v){
+  // same quality from other sources first, then lower qualities, then (last resort) higher ones
+  const vars = visibleVariants(g).filter(x => x.id !== v.id);
+  const rank = x => ({ '8K':5,'4K':5,'RAW':4,'FHD':3,'HD':2,'':2,'SD':1 })[x.q] ?? 2;
+  return [...vars.filter(x => x.q === v.q), ...vars.filter(x => x.q !== v.q && rank(x) < rank(v)).sort((a,b) => rank(b)-rank(a)), ...vars.filter(x => x.q !== v.q && rank(x) >= rank(v))];
+}
+function catShort(cid){ const c = catalog.cats.find(c => c.id === String(cid)); return c ? c.name.replace(/^[^|]*\|\s*/, '') : ''; }
+function qLabel(v){ return (v.q === '' ? 'Standard' : v.q === '8K' ? '4K+' : v.q); }
+$('#btnQuality').onclick = ev => {
+  if (!current || !current.group) return;
+  const menu = $('#qmenu'), g = current.group;
+  menu.innerHTML = '<div class="mh">Quality · ' + esc(g.name) + '</div>' + visibleVariants(g).map(v =>
+    `<div class="mi ${v.id === current.variant.id ? 'on' : ''}" data-id="${v.id}"><b>${esc(qLabel(v))}</b><span class="sub">${esc(catShort(v.cat))}</span></div>`).join('') +
+    `<div class="mi" data-id="auto"><span class="hint">Automatic (${esc(settings.quality === 'best' ? 'best available' : settings.quality)})</span></div>`;
+  menu.querySelectorAll('.mi').forEach(mi => mi.onclick = () => {
+    menu.classList.add('hidden');
+    if (mi.dataset.id === 'auto') { ls.set('q:' + g.key, null); localStorage.removeItem('q:' + g.key); play(g); return; }
+    const v = g.variants.find(v => v.id === Number(mi.dataset.id)); if (!v) return;
+    ls.set('q:' + g.key, v.id); play(g, { variant: v });
+  });
+  const r = ev.currentTarget.getBoundingClientRect();
+  menu.style.left = Math.min(r.left, window.innerWidth - 300) + 'px'; menu.style.top = (r.top - 8) + 'px'; menu.style.transform = 'translateY(-100%)';
+  menu.classList.remove('hidden');
+};
+document.addEventListener('click', e => { if (!e.target.closest('#qmenu') && !e.target.closest('#btnQuality')) $('#qmenu').classList.add('hidden'); });
+
+// ---------- playback
+let hls = null, stallTimer = null, progressTimer = null;
+function stopPlayback(){
+  playToken++;
+  saveProgress(true);
+  if (hls) { try { hls.destroy(); } catch{} hls = null; }
+  try { video.pause(); video.removeAttribute('src'); video.load(); } catch{}
+  if (epgTimer) { clearInterval(epgTimer); epgTimer = null; }
+  if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  seekEl.classList.remove('on');
+  $('#btnCC').style.display = 'none';
+  fetch('/api/stop').catch(()=>{});
+}
+function posKey(){ return current ? current.key : null; }
+function saveProgress(final){
+  if (!current || current.kind === 'live' || !current.posItem) return;
+  const t = current.offset + (video.currentTime || 0), dur = current.duration || 0;
+  if (t < 20) return;
+  const item = Object.assign({}, current.posItem, { t: Math.floor(t), dur: Math.floor(dur) });
+  if (dur && t > dur * 0.96) { positions[current.key] = null; post('/api/progress', { key: current.key, remove: true }).catch(()=>{}); return; }
+  positions[current.key] = item;
+  post('/api/progress', { key: current.key, item }).catch(()=>{});
+}
+async function play(x, opts){
+  opts = opts || {};
+  stopPlayback();
+  const token = playToken;
+  let group = null, variant = null, kind, key, sid, ext, name = x.name, extra = '';
+  if (x.key) {                       // merged live channel
+    group = x; variant = opts.variant || pickVariant(x);
+    if (!variant) { toast('All sources of this channel are hidden in Settings.', 'warn'); return; }
+    kind = 'live'; key = 'ch:' + x.key; sid = variant.id; ext = 'ts';
+  } else if (x._kind === 'catchup') {
+    group = x.group; variant = x.variant; kind = 'catchup'; key = 'cu:' + x.variant.id + ':' + x.prog.start; sid = x.variant.id; ext = 'ts';
+    name = x.prog.title; extra = x.group.name + ' · ' + fmtDateTime(x.prog.start) + ' (catch-up)';
+  } else if (x._kind === 'rec') {
+    kind = 'rec'; key = 'rec:' + x.id; sid = x.id; ext = x.file && x.file.endsWith('.mp4') ? 'mp4' : 'ts'; name = x.title; extra = x.channel + ' · ' + fmtDateTime(x.start) + (x.status === 'recording' ? ' · recording now' : '');
+  } else {
+    kind = x._kind || (tab==='live' ? 'live' : 'movie'); key = x._key || favKey(x); sid = x.stream_id;
+    ext = kind==='live' ? 'ts' : (x.container_extension || 'mp4');
+  }
+  // resume where we left off (movies, series, recordings)
+  let resumeFrom = 0;
+  if (opts.t === undefined && kind !== 'live' && kind !== 'catchup' && positions[key] && positions[key].t > 30) resumeFrom = positions[key].t;
+  current = { x, group, variant, key, kind, ext, sid, offset: opts.t || resumeFrom || 0, info: null, force: !!opts.force, tried: opts.tried || [], stalls: 0, duration: 0, at: Date.now()/1000,
+              cu: x._kind === 'catchup' ? { start: x.prog.start, dur: Math.ceil((x.prog.stop - x.prog.start) / 60) } : null,
+              posItem: kind === 'live' ? null : { kind, name, sid, ext, extra, icon: x.icon || x.stream_icon || x.cover || '', series: x._series || null, nextKey: null } };
+  $('#title').textContent = name;
+  const qb = $('#btnQuality'); qb.style.display = group && kind === 'live' ? '' : 'none'; if (variant) qb.textContent = qLabel(variant) + ' ▾';
+  document.querySelectorAll('.item').forEach(el => el.classList.toggle('active', el.dataset.key === key));
+  showOverlay('<span class="spin"></span>Starting ' + esc(name) + (variant && kind === 'live' ? ' (' + esc(qLabel(variant)) + ')' : '') + '…');
+  if (kind === 'live') { updateEpg(); epgTimer = setInterval(updateEpg, 60000); }
+  else $('#epgbox').innerHTML = '<span class="hint">' + esc(extra || (kind === 'series' ? 'Series' : 'Movie')) + '</span>' + (x.description || (x.prog && x.prog.description) ? '<div class="d" style="color:var(--muted);font-size:12px;max-height:3.9em;overflow:hidden;margin-top:4px">' + esc(x.description || x.prog.description) + '</div>' : '');
+
+  if (!window.Hls || !Hls.isSupported()) { fail('This browser does not support HLS playback (use Chrome).', x); return; }
+
+  let res;
+  let url = `/api/play?kind=${kind}&id=${sid}&ext=${ext}&t=${current.offset}${opts.force?'&force=1':''}`;
+  if (current.cu) url += `&start=${current.cu.start}&dur=${current.cu.dur}`;
+  try { res = await api(url); }
+  catch (e) {
+    if (e.offline) return goOffline();
+    if (token !== playToken) return;
+    if (/one connection/i.test(e.message)) return recordingBlocks(x);
+    if (!tryFallback('did not start')) fail(e.message, x);
+    return;
+  }
+  if (token !== playToken) return;
+  const info = current.info = res.info;
+  current.duration = info.duration || 0;
+  if (current.posItem) current.posItem.dur = Math.floor(current.duration);
+
+  if (res.direct) {                 // mp4 with h264/aac and no subtitles: the browser plays the file itself
+    fetch('/api/stop').catch(()=>{});
+    current.offset = 0;
+    video.onerror = () => { if (token===playToken) play(x, { t: current.offset + (video.currentTime||0), force: true }); };
+    video.onloadeddata = () => { if (token===playToken) { hideOverlay(); if (resumeFrom || opts.t) video.currentTime = opts.t || resumeFrom; } };
+    video.src = res.direct;
+    video.play().catch(()=>{});
+    setupProgress(token, true);
+    return;
+  }
+
+  hls = new Hls({ lowLatencyMode: false, liveSyncDurationCount: 4, liveMaxLatencyDurationCount: 30,
+    maxBufferLength: 60, maxMaxBufferLength: 120, backBufferLength: 30,
+    fragLoadingMaxRetry: 8, manifestLoadingMaxRetry: 8, levelLoadingMaxRetry: 8, nudgeMaxRetry: 8,
+    enableWebVTT: true, renderTextTracksNatively: true });
+  hls.loadSource(res.playlist);
+  hls.attachMedia(video);
+  hls.on(Hls.Events.MANIFEST_PARSED, () => { if (token===playToken) video.play().catch(()=>{}); });
+  hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+    if (token !== playToken) return;
+    const tracks = hls.subtitleTracks || [];
+    if (!tracks.length) return;
+    const en = tracks.findIndex(t => /^en/i.test(t.lang || '') || /eng/i.test(t.name || '')), idx = en >= 0 ? en : 0;
+    const cc = $('#btnCC'); cc.style.display = ''; cc.dataset.idx = idx;
+    const on = settings.subs !== false;
+    hls.subtitleDisplay = on; hls.subtitleTrack = on ? idx : -1;
+    cc.classList.toggle('on', on); cc.textContent = 'CC ' + (on ? 'on' : 'off');
+  });
+  video.onloadeddata = () => { if (token===playToken) hideOverlay(); };
+  hls.on(Hls.Events.ERROR, (ev, d) => {
+    if (token !== playToken || !d.fatal) return;
+    console.warn('hls fatal', d.type, d.details);
+    if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
+      if (kind !== 'rec') { pingLoop().then(() => { if (token===playToken && lastPing.rec && lastPing.rec.active && !current.blockedShown) { current.blockedShown = true; recordingBlocks(x); } }); }
+      if (!current.netRetried) { current.netRetried = true; setTimeout(() => { if (token===playToken && hls) hls.startLoad(); }, 1500); return; }
+    }
+    if (d.type === Hls.ErrorTypes.MEDIA_ERROR && !opts.force) { play(x, { t: current.offset + (video.currentTime||0), force: true, variant, tried: current.tried }); return; }
+    if (!tryFallback('failed')) fail('This stream could not be played (' + d.details + ').', x);
+  });
+
+  if (kind !== 'live' && current.duration > 0) {
+    seekEl.classList.add('on');
+    seekBar.max = Math.floor(current.duration); seekBar.value = Math.floor(current.offset);
+    $('#tDur').textContent = fmtDur(current.duration);
+  }
+  if (kind === 'rec' && x.status === 'recording') { seekEl.classList.add('on'); seekBar.max = Math.floor(current.duration || 1); $('#tDur').textContent = 'live'; }
+  // stall detection -> automatic fallback to the next source / lower quality
+  video.onwaiting = () => {
+    if (token!==playToken) return;
+    $('#meta').dataset.buf = '⏳ buffering…'; renderMeta();
+    if (kind === 'live' && group) {
+      current.stalls++;
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => { if (token===playToken && video.readyState < 3) tryFallback('kept buffering'); }, 12000);
+      if (current.stalls >= 4) tryFallback('stuttered');
+    }
+  };
+  video.onplaying = () => { if (token===playToken) { delete $('#meta').dataset.buf; renderMeta(); if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; } } };
+  setTimeout(() => { if (token===playToken) current.stalls = 0; }, 90000);
+  video.onended = () => { if (token===playToken && kind !== 'live') onEnded(); };
+  setupProgress(token, false);
+  if (resumeFrom) toast(`Resumed at ${fmtDur(resumeFrom)} · <a href="#" id="startOver" style="color:var(--ochre)">start over</a>`, '', 8000);
+  const so = $('#startOver'); if (so) so.onclick = ev => { ev.preventDefault(); play(x, { t: 0 }); };
+}
+function setupProgress(token, direct){
+  video.ontimeupdate = () => {
+    if (token !== playToken) return;
+    if (!seekEl.classList.contains('on') || seekBar.matches(':active')) return;
+    const t = current.offset + video.currentTime;
+    seekBar.value = Math.floor(t); $('#tCur').textContent = fmtDur(t);
+  };
+  if (direct) { video.onended = () => { if (token===playToken) onEnded(); }; }
+  progressTimer = setInterval(() => { if (token===playToken && !video.paused) saveProgress(false); }, 15000);
+}
+function onEnded(){
+  if (!current) return;
+  saveProgress(true);
+  if (current.kind === 'series' && current.x._next) { const n = current.x._next; toast('Up next: ' + esc(n.name), '', 6000); play(n); }
+}
+function recordingBlocks(x){
+  const r = (lastPing.rec && lastPing.rec.active) || {};
+  showOverlay(`<img class="mascot small" src="/assets/icon-192.png" alt=""><div class="lead">Recording in progress</div><div style="margin-bottom:12px">${esc(r.title || 'A recording')}${r.channel ? ' on ' + esc(r.channel) : ''} is being recorded${r.stop ? ' until ' + fmtTime(r.stop) : ''}.<br><span class="hint">Your subscription allows one connection, so live TV, movies and catch-up wait until it is done. Recordings and finished files play normally.</span></div>
+    <button class="btn primary" id="watchRec">Watch this recording</button> <button class="btn danger" id="cancelRec">Cancel the recording</button> <button class="btn" id="okRec">OK</button>`);
+  $('#watchRec').onclick = async () => { const recs = await api('/api/recordings'); const rec = recs.items.find(i => i.id === r.id); if (rec) play(Object.assign({ _kind: 'rec' }, rec)); };
+  $('#cancelRec').onclick = async () => { if (!confirm('Cancel the recording of “' + (r.title || '') + '”?')) return; await post('/api/record/cancel', { id: r.id }); toast('Recording cancelled.'); setTimeout(() => play(x), 1500); };
+  $('#okRec').onclick = () => hideOverlay();
+}
+function tryFallback(reason){
+  if (!current || !current.group || !current.variant || current.kind !== 'live') return false;
+  const tried = [...current.tried, current.variant.id];
+  if (reason === 'did not start' && tried.length >= 3) return false;   // don't keep probing dead sources
+  const next = fallbackChain(current.group, current.variant).find(v => !tried.includes(v.id));
+  if (!next) return false;
+  toast(`<b>${esc(current.group.name)}</b> ${esc(reason)} on ${esc(qLabel(current.variant))} · switched to <b>${esc(qLabel(next))}</b> (${esc(catShort(next.cat))})`, 'warn', 7000);
+  play(current.group, { variant: next, tried });
+  return true;
+}
+seekBar.onchange = () => {
+  if (!current || current.kind === 'live') return;
+  const t = Number(seekBar.value), local = t - current.offset;
+  if (!hls && video.src) { video.currentTime = t; return; }
+  if (hls && video.buffered.length && local >= 0 && local < video.duration - 1) { video.currentTime = local; return; }
+  play(current.x, { t, force: current.force });
+};
+seekBar.oninput = () => { $('#tCur').textContent = fmtDur(seekBar.value); };
+$('#btnCC').onclick = () => {
+  if (!hls) return;
+  const on = hls.subtitleTrack < 0;
+  hls.subtitleDisplay = on; hls.subtitleTrack = on ? Number($('#btnCC').dataset.idx || 0) : -1;
+  $('#btnCC').classList.toggle('on', on); $('#btnCC').textContent = 'CC ' + (on ? 'on' : 'off');
+  settings.subs = on; post('/api/settings', { subs: on }).catch(()=>{});
+};
+function fail(msg, x){
+  showOverlay(`<img class="mascot small" src="/assets/icon-192.png" alt=""><div class="err">${esc(msg)}</div><button class="btn" id="retry">Try again</button>`);
+  $('#retry').onclick = () => play(x);
+}
+function fullscreen(){ const el = document.querySelector('.player'); if (document.fullscreenElement) document.exitFullscreen(); else el.requestFullscreen && el.requestFullscreen(); }
+$('#btnFull').onclick = fullscreen;
+video.ondblclick = fullscreen;
+
+async function updateEpg(){
+  if (!current || current.kind!=='live') return;
+  const bar = $('#epgbox');
+  try {
+    const e = await api('/api/epg?id=' + current.sid);
+    const now = Date.now()/1000;
+    const cur = e.find(p => p.start <= now && p.stop > now) || e[0];
+    const next = e.find(p => p.start >= (cur ? cur.stop : now));
+    if (!cur) { bar.innerHTML = '<span class="hint">No programme information</span>'; return; }
+    const pct = Math.max(0, Math.min(100, (now - cur.start) / Math.max(1, cur.stop - cur.start) * 100));
+    const g = current.group, canCu = g && g.archive && g.variants.some(v => v.archive);
+    bar.innerHTML = `<div class="epg">
+      <div><div class="lbl">Now · ${fmtTime(cur.start)}–${fmtTime(cur.stop)}${canCu ? ' · <a href="#" id="cuStart" style="color:var(--teal)">↺ watch from start</a>' : ''}${g ? ' · <a href="#" id="recNow" style="color:var(--orange)">● record</a>' : ''}</div><div class="t">${esc(cur.title)}</div><div class="d">${esc(cur.description)}</div><div class="bar"><i style="width:${pct}%"></i></div></div>
+      <div><div class="lbl">Next · ${next?fmtTime(next.start)+'–'+fmtTime(next.stop):''}</div><div class="t">${esc(next?next.title:'—')}</div><div class="d">${esc(next?next.description:'')}</div></div>
+    </div>`;
+    const cs = $('#cuStart'); if (cs) cs.onclick = ev => { ev.preventDefault(); playCatchup(g, cur); };
+    const rn = $('#recNow'); if (rn) rn.onclick = ev => { ev.preventDefault(); scheduleRecording(g, cur); };
+  } catch { bar.innerHTML = '<span class="hint">No programme information</span>'; }
+}
+
+// ---------- catch-up & recording helpers
+function archiveVariant(g){
+  const vars = visibleVariants(g).filter(v => v.archive);
+  if (!vars.length) return null;
+  const order = QORDER[settings.quality] || QORDER.FHD;
+  for (const q of order) { const v = vars.find(v => v.q === q); if (v) return v; }
+  return vars[0];
+}
+function canCatchup(g, p){
+  const v = archiveVariant(g); if (!v) return false;
+  const now = Date.now()/1000;
+  return p.start < now && (now - p.start) < v.archive * 86400;
+}
+function playCatchup(g, p){
+  const v = archiveVariant(g); if (!v) { toast('No catch-up source for this channel.', 'warn'); return; }
+  closeGuide(); switchToLive();
+  play({ _kind: 'catchup', group: g, variant: v, prog: p, name: p.title });
+}
+async function scheduleRecording(g, p){
+  const v = pickVariant(g); if (!v) return;
+  try {
+    const r = await post('/api/record', { stream_id: v.id, group: g.key, channel: g.name, title: p.title, description: p.description, start: p.start, stop: p.stop, epg: g.epg, icon: g.icon });
+    toast(`● Recording scheduled: <b>${esc(p.title)}</b> · ${esc(fmtDateTime(p.start))}${(r.notes||[]).length ? '<br><span class="hint">' + esc(r.notes.join('; ')) + '</span>' : ''}`, '', 7000);
+    await loadRecordings();
+    if (G.open) renderGuide(false);
+    if (tab === 'rec') render();
+  } catch (e) { toast(esc(e.message), 'err', 9000); }
+}
+let recordings = { items: [], dir: '', free: 0 };
+async function loadRecordings(){ try { recordings = await api('/api/recordings'); } catch {} return recordings; }
+function recFor(sid, start){ return recordings.items.find(r => ['scheduled','recording'].includes(r.status) && r.start === start && String(r.stream_id) === String(sid)); }
+function recForGroup(g, p){ return recordings.items.find(r => ['scheduled','recording'].includes(r.status) && r.start === p.start && (r.group === g.key || g.variants.some(v => v.id === r.stream_id))); }
+let lastPing = {}, warnedRec = null;
+async function pingLoop(){
+  try {
+    const r = await fetch('/api/ping'); const j = await r.json(); lastPing = j;
+    const rec = j.rec || {};
+    if (rec.upcoming && warnedRec !== rec.upcoming.id && current && current.kind !== 'rec') {
+      warnedRec = rec.upcoming.id;
+      toast(`● <b>${esc(rec.upcoming.title)}</b> starts recording in ${Math.max(1, Math.round(rec.upcoming.in/60))} min. Playback will stop then (one connection).`, 'warn', 15000);
+    }
+    const dot = $('#recDot'); dot.style.display = rec.active ? '' : 'none'; if (rec.active) dot.title = 'Recording: ' + rec.active.title;
+    // a recording took over the single connection while we were streaming from the provider
+    if (rec.active && current && current.kind !== 'rec' && current.at < rec.active.started && !current.blockedShown) { current.blockedShown = true; recordingBlocks(current.x); }
+  } catch {}
+}
+setInterval(pingLoop, 5000); pingLoop();
+
+// ---------- TV guide
+const PX = 4;                     // pixels per minute
+const G = { open: false, day: null, scope: null, rows: [], limit: 60, data: {}, search: '' };
+function dayStart(offsetDays){ const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + offsetDays); return Math.floor(d.getTime()/1000); }
+async function openGuide(){
+  if (!loggedIn) return;
+  if (!catalog.groups.length) { try { await loadCatalog(); } catch (e) { toast(esc(e.message), 'err'); return; } }
+  try { status.epg = await api('/api/epg/status'); } catch {}
+  await loadRecordings();
+  G.open = true; $('#guide').classList.remove('hidden'); $('#qmenu').classList.add('hidden');
+  if (G.day === null) G.day = dayStart(0);
+  if (G.scope === null) G.scope = (tab==='live' && catEl.value) ? catEl.value : (favorites.some(k => k.startsWith('ch:')) ? '__fav' : '');
+  const gs = $('#gscope'); catOptions(gs, '<option value="__fav">★ Favourites</option><option value="">All channels</option>'); gs.value = [...gs.options].some(o => o.value===G.scope) ? G.scope : ''; G.scope = gs.value;
+  renderDays(); await renderGuide(true);
+}
+function closeGuide(){ G.open = false; $('#guide').classList.add('hidden'); $('#pcard').classList.add('hidden'); }
+$('#btnGuide').onclick = () => G.open ? closeGuide() : openGuide();
+$('#gclose').onclick = closeGuide;
+$('#gscope').onchange = () => { G.scope = $('#gscope').value; G.limit = 60; renderGuide(true); };
+let gsT = null; $('#gsearch').oninput = () => { clearTimeout(gsT); gsT = setTimeout(() => { G.search = $('#gsearch').value.trim(); renderGuide(true); }, 250); };
+function renderDays(){
+  const st = status.epg || {}, first = st.first || dayStart(0), last = st.last || dayStart(1);
+  const days = [];
+  for (let o = -7; o <= 7; o++) { const d = dayStart(o); if (d + 86400 > first && d < last) days.push(d); }
+  if (!days.length) days.push(dayStart(0));
+  if (!days.includes(G.day)) G.day = days.includes(dayStart(0)) ? dayStart(0) : days[0];
+  $('#gdays').innerHTML = days.map(d => `<button class="${d===G.day?'on':''}" data-d="${d}">${esc(fmtDay(d))}</button>`).join('');
+  $('#gdays').querySelectorAll('button').forEach(b => b.onclick = () => { G.day = Number(b.dataset.d); renderDays(); renderGuide(true); });
+}
+function guideRows(){
+  const q = G.scope;
+  let rows = visibleGroups().filter(g => g.epg);
+  if (q === '__fav') rows = rows.filter(g => favorites.includes('ch:' + g.key));
+  else if (q) rows = rows.filter(g => g.variants.some(v => v.cat === q && !hidden(v.cat)));
+  return rows;
+}
+async function renderGuide(reset){
+  const wrap = $('#gwrap');
+  const st = status.epg || {};
+  $('#gstatus').textContent = st.count ? `${st.count.toLocaleString('en-GB')} programmes · updated ${ago(st.updated)}` : (st.status === 'busy' ? 'Fetching the guide…' : 'No guide data yet');
+  if (G.search.length >= 2) return renderSearch();
+  const rows = guideRows();
+  G.rows = rows;
+  if (!rows.length) { wrap.innerHTML = '<div class="empty"><img src="/assets/icon-192.png" alt="">No channels with guide data in this selection.</div>'; return; }
+  const from = G.day, to = G.day + 86400, now = Date.now()/1000;
+  const shown = rows.slice(0, G.limit);
+  let data = {};
+  try { data = await api(`/api/epg/range?from=${from}&to=${to}&ids=${encodeURIComponent([...new Set(shown.map(g => g.epg))].join(','))}`); } catch (e) { toast(esc(e.message), 'err'); }
+  let html = '<div class="grid">';
+  html += '<div class="ghead corner">' + esc(fmtDay(from)) + '</div><div class="ghead" style="width:' + (1440*PX) + 'px;position:sticky;top:0">';
+  for (let h = 0; h < 24; h++) html += `<div class="hr" style="left:${h*60*PX}px">${String(h).padStart(2,'0')}:00</div>`;
+  html += '</div>';
+  shown.forEach(g => {
+    const v = pickVariant(g);
+    html += `<div class="gch" data-key="${esc(g.key)}" title="Watch ${esc(g.name)}">${g.icon ? `<img loading="lazy" src="${esc(g.icon)}" onerror="this.style.visibility='hidden'">` : '<div class="ph"></div>'}<div style="min-width:0"><div class="n">${esc(g.name)}</div><div class="s">${esc(bestQuality(g))}${g.archive ? ' · catch-up ' + g.archive + 'd' : ''}</div></div></div>`;
+    html += `<div class="grow" style="width:${1440*PX}px">`;
+    (data[g.epg] || []).forEach((p, i) => {
+      const a = Math.max(p.start, from), b = Math.min(p.stop, to);
+      if (b <= a) return;
+      const left = (a - from) / 60 * PX, w = (b - a) / 60 * PX - 2;
+      const cls = p.stop < now ? 'past' : (p.start <= now ? 'live' : '');
+      const rec = recForGroup(g, p);
+      html += `<div class="gp ${cls} ${p.start < now && canCatchup(g, p) ? 'cu' : ''}" style="left:${left}px;width:${Math.max(w, 6)}px" data-key="${esc(g.key)}" data-i="${i}" title="${esc(p.title)}"><div class="t">${esc(p.title)}</div><div class="tm">${fmtTime(p.start)}–${fmtTime(p.stop)}</div>${rec ? '<i class="rd" title="Recording scheduled"></i>' : ''}</div>`;
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  if (rows.length > shown.length) html += `<div style="padding:10px 14px;position:sticky;left:0"><button class="btn" id="gmore">Show more channels (${rows.length - shown.length} more)</button></div>`;
+  const keepScroll = !reset ? { l: wrap.scrollLeft, t: wrap.scrollTop } : null;
+  wrap.innerHTML = html;
+  G.data = data;
+  const grid = wrap.querySelector('.grid');
+  if (from <= now && now < to) { const nl = document.createElement('div'); nl.className = 'nowline'; nl.style.left = (220 + (now - from) / 60 * PX) + 'px'; grid.appendChild(nl); }
+  wrap.querySelectorAll('.gp').forEach(el => el.onclick = () => showProgramme(el.dataset.key, G.data[catalog.byKey[el.dataset.key].epg][Number(el.dataset.i)]));
+  wrap.querySelectorAll('.gch').forEach(el => el.onclick = () => { closeGuide(); switchToLive(); play(catalog.byKey[el.dataset.key]); });
+  const more = $('#gmore'); if (more) more.onclick = () => { G.limit += 60; renderGuide(false); };
+  if (keepScroll) { wrap.scrollLeft = keepScroll.l; wrap.scrollTop = keepScroll.t; }
+  else if (from <= now && now < to) wrap.scrollLeft = Math.max(0, (now - from) / 60 * PX - 200);
+  else wrap.scrollLeft = 6 * 60 * PX;
+}
+async function renderSearch(){
+  const wrap = $('#gwrap');
+  wrap.innerHTML = '<div class="empty"><span class="spin"></span>Searching…</div>';
+  let res = [];
+  try { res = await api('/api/epg/search?q=' + encodeURIComponent(G.search)); } catch (e) { wrap.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; return; }
+  const scopeKeys = new Set(guideRows().map(g => g.key));
+  const rows = [];
+  res.forEach(p => (epgIndex[p.ch] || []).forEach(k => { if (scopeKeys.has(k) || (!G.scope && catalog.byKey[k])) rows.push({ p, g: catalog.byKey[k] }); }));
+  if (!rows.length) { wrap.innerHTML = '<div class="empty"><img src="/assets/icon-192.png" alt="">No programmes found for “' + esc(G.search) + '” in this selection.</div>'; return; }
+  const now = Date.now()/1000;
+  wrap.innerHTML = '<div class="gres">' + rows.slice(0, 400).map((r, i) => `<div class="r ${r.p.stop < now ? 'past' : ''}" data-i="${i}"><span class="tm">${esc(fmtDateTime(r.p.start))}–${fmtTime(r.p.stop)}</span><span class="ch">${esc(r.g.name)}</span><span class="t">${esc(r.p.title)}</span>${r.p.start <= now && now < r.p.stop ? '<i class="badge q4K">LIVE</i>' : ''}</div>`).join('') + '</div>';
+  wrap.querySelectorAll('.r').forEach(el => el.onclick = () => { const r = rows[Number(el.dataset.i)]; showProgramme(r.g.key, r.p); });
+}
+function switchToLive(){ if (tab !== 'live') { tab = 'live'; document.querySelectorAll('.tabs button[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab==='live')); loadTab(); } }
+function showProgramme(key, p){
+  const g = catalog.byKey[key]; if (!g || !p) return;
+  const now = Date.now()/1000, live = p.start <= now && now < p.stop, past = p.stop <= now;
+  const cu = canCatchup(g, p), rec = recForGroup(g, p);
+  const card = $('#pcard');
+  let btns = '<button class="btn" id="pclose">Close</button>';
+  if (!past) btns += rec ? `<button class="btn danger" id="prec">✕ Cancel recording</button>` : `<button class="btn" id="prec" style="color:var(--orange)">● Record</button>`;
+  if (cu) btns += `<button class="btn ${live ? '' : 'primary'}" id="pcu">↺ Watch from start</button>`;
+  if (live) btns += `<button class="btn primary" id="pwatch">Watch live</button>`;
+  else if (!past) btns += `<button class="btn" id="pwatch">Watch channel now</button>`;
+  else if (!cu) btns += `<button class="btn" id="pwatch">Watch channel now</button>`;
+  card.innerHTML = `<div class="ch">${esc(g.name)}${g.archive ? ' · catch-up ' + g.archive + ' days' : ''}${rec ? ' · <span style="color:var(--danger)">● ' + (rec.status === 'recording' ? 'recording' : 'scheduled') + '</span>' : ''}</div><h3>${esc(p.title)}</h3><div class="tm">${esc(fmtDateTime(p.start))} – ${fmtTime(p.stop)} · ${Math.round((p.stop-p.start)/60)} min${live ? ' · <b>live now</b>' : ''}</div><div class="d">${esc(p.description) || '<span class="hint">No description</span>'}</div>
+    <div class="row">${btns}</div>`;
+  card.classList.remove('hidden');
+  $('#pclose').onclick = () => card.classList.add('hidden');
+  const pw = $('#pwatch'); if (pw) pw.onclick = () => { card.classList.add('hidden'); closeGuide(); switchToLive(); play(g); };
+  const pc = $('#pcu'); if (pc) pc.onclick = () => { card.classList.add('hidden'); playCatchup(g, p); };
+  const pr = $('#prec'); if (pr) pr.onclick = async () => {
+    card.classList.add('hidden');
+    if (rec) { await post('/api/record/cancel', { id: rec.id }); toast('Recording cancelled.'); await loadRecordings(); renderGuide(false); }
+    else await scheduleRecording(g, p);
+  };
+}
+
+// ---------- settings
+function openSettings(){
+  $('#sQuality').value = settings.quality || 'FHD'; $('#sSubs').checked = settings.subs !== false; $('#sRecBefore').value = String(settings.rec_before ?? 2); $('#sRecAfter').value = String(settings.rec_after ?? 10);
+  $('#sRecInfo').textContent = 'Recordings are saved in ' + (recordings.dir || '~/Movies/Beeldbuis') + (recordings.free ? ' · ' + fmtSize(recordings.free) + ' free' : '') + '. A recording has priority over live TV (one connection); you get a warning 2 minutes before it starts.';
+  $('#sVersion').textContent = status.version || '';
+  const byCountry = {};
+  catalog.cats.forEach(c => (byCountry[c.country] = byCountry[c.country] || []).push(c));
+  const keys = Object.keys(byCountry).sort((a,b) => (a==='NL'?-1:b==='NL'?1:a==='UK'?-1:b==='UK'?1:a.localeCompare(b)));
+  $('#sCats').innerHTML = keys.map(k => {
+    const cs = byCountry[k], n = cs.reduce((a,c) => a + c.n, 0), on = cs.filter(c => !hidden(c.id)).length;
+    return `<div class="ctry" data-c="${esc(k)}"><div class="hd"><input type="checkbox" class="call" ${on === cs.length ? 'checked' : ''} ${on && on < cs.length ? 'data-ind=1' : ''}><b>${esc(k)}</b><span class="cnt">${cs.length} categories · ${n.toLocaleString('en-GB')} channels${on < cs.length ? ' · ' + (cs.length - on) + ' hidden' : ''}</span><span class="hint">▾</span></div><div class="cats">` +
+      cs.map(c => `<label><input type="checkbox" data-id="${esc(c.id)}" ${hidden(c.id) ? '' : 'checked'}>${esc(c.name.replace(/^[^|]*\|\s*/, ''))} <span class="hint">(${c.n})</span></label>`).join('') + '</div></div>';
+  }).join('');
+  $('#sCats').querySelectorAll('.call').forEach(cb => { cb.indeterminate = !!cb.dataset.ind; cb.onclick = ev => { ev.stopPropagation(); cb.closest('.ctry').querySelectorAll('.cats input').forEach(i => i.checked = cb.checked); }; });
+  $('#sCats').querySelectorAll('.hd').forEach(h => h.onclick = ev => { if (ev.target.tagName !== 'INPUT') h.parentElement.classList.toggle('open'); });
+  const sd = status.catalog || {}, se = status.epg || {};
+  $('#sData').innerHTML = `Channel list: ${sd.n ? sd.n.toLocaleString('en-GB') + ' channels, updated ' + ago(sd.t) : 'not loaded yet'} (refreshes every 12 h).<br>TV guide: ${se.count ? se.count.toLocaleString('en-GB') + ' programmes, updated ' + ago(se.updated) + ', next refresh ' + fmtDateTime(se.next) : (se.status === 'busy' ? 'fetching…' : 'not loaded yet')}${se.error ? '<br><span style="color:var(--danger)">Last error: ' + esc(se.error) + '</span>' : ''}.`;
+  $('#settingsModal').classList.remove('hidden');
+}
+$('#btnSettings').onclick = openSettings;
+$('#sCancel').onclick = () => $('#settingsModal').classList.add('hidden');
+$('#sOnlyNLUK').onclick = () => $('#sCats').querySelectorAll('.ctry').forEach(c => c.querySelectorAll('input').forEach(i => i.checked = ['NL','UK'].includes(c.dataset.c)));
+$('#sAll').onclick = () => $('#sCats').querySelectorAll('input').forEach(i => i.checked = true);
+$('#sRefreshChannels').onclick = async () => { await post('/api/channels/refresh'); toast('Refreshing the channel list…'); };
+$('#sRefreshEpg').onclick = async () => { await post('/api/epg/refresh'); toast('Refreshing the TV guide; this takes a minute or two.'); };
+$('#sSave').onclick = async () => {
+  settings.quality = $('#sQuality').value; settings.subs = $('#sSubs').checked; settings.rec_before = Number($('#sRecBefore').value); settings.rec_after = Number($('#sRecAfter').value);
+  settings.hidden_cats = [...$('#sCats').querySelectorAll('.cats input')].filter(i => !i.checked).map(i => i.dataset.id);
+  await post('/api/settings', settings);
+  $('#settingsModal').classList.add('hidden');
+  if (tab === 'live') { const prev = catEl.value; catOptions(catEl, '<option value="__fav">★ Favourites</option><option value="">All channels</option>'); catEl.value = [...catEl.options].some(o => o.value===prev) ? prev : ''; items = visibleGroups(); limit = 300; render(); }
+  toast('Settings saved.');
+};
+
+// ---------- keys
+document.addEventListener('keydown', e => {
+  if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) { if (e.key === 'Escape') e.target.blur(); return; }
+  if (e.key === 'Escape') { $('#qmenu').classList.add('hidden'); if (!$('#pcard').classList.contains('hidden')) $('#pcard').classList.add('hidden'); else if (G.open) closeGuide(); else { $('#settingsModal').classList.add('hidden'); if (loggedIn) $('#loginModal').classList.add('hidden'); } return; }
+  if (e.key === 'g') { G.open ? closeGuide() : openGuide(); return; }
+  if (e.key === 'f') fullscreen();
+  if (e.key === ' ') { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && current && !seriesView && tab !== 'series' && !G.open) {
+    const rows = filtered(); const i = rows.findIndex(r => favKey(r) === current.key);
+    const n = rows[i + (e.key === 'ArrowDown' ? 1 : -1)]; if (n) { play(n); e.preventDefault(); }
+  }
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && current && current.kind !== 'live' && seekEl.classList.contains('on')) {
+    const t = Math.max(0, current.offset + video.currentTime + (e.key==='ArrowRight' ? 30 : -30));
+    seekBar.value = Math.floor(t); seekBar.onchange(); e.preventDefault();
+  }
+});
+setInterval(async () => { if (loggedIn) { try { status = await api('/api/status'); } catch {} } }, 5 * 60000);
+setInterval(async () => { if (loggedIn && tab === 'rec' && !seriesView) { await loadRecordings(); render(); } }, 30000);
+checkStatus();
+})();
+</script>
+</body>
+</html>
