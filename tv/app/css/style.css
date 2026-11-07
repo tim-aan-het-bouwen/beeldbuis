@@ -6,19 +6,24 @@
   --navy: #0E0F12; --panel: #1D2026; --panel2: #262A32; --dim: #9C9686; --line: #000;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; width: 100%; height: 100%; background: var(--navy); overflow: hidden; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+html { background: transparent; }
+body { background: var(--navy); }
 body { color: var(--creme); font-family: "SamsungOne", "Roboto", "Helvetica Neue", Arial, sans-serif; font-size: 28px; }
 #stage { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; transform-origin: 0 0; overflow: hidden; background: var(--navy); }
 .hidden { display: none !important; }
 button, input { font: inherit; color: inherit; }
 button { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
 img { display: block; }
+/* lists scroll by focus on a TV and by finger on a phone; no scrollbars either way */
+.side, .main, .home, .row-items, .episodes, .seasons, .chips { -webkit-overflow-scrolling: touch; }
+::-webkit-scrollbar { display: none; }
 
 /* video layers sit under everything; the UI hides while playing */
 #avplayer, #video { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #000; }
 body.playing #top, body.playing #screen { display: none; }
-body.playing #stage { background: transparent; }
-body.playing, body.playing html { background: transparent; }
+/* the TV's and Android's video plane sits behind the page: everything must be see-through while playing */
+body.playing, body.playing #stage { background: transparent; }
 
 /* header */
 #top { position: absolute; left: 0; top: 0; width: 1920px; height: 120px; display: flex; align-items: center; padding: 0 72px; z-index: 5;
@@ -63,10 +68,10 @@ body.playing, body.playing html { background: transparent; }
 .chip.focus { border-color: var(--oker); transform: scale(1.06); }
 
 /* home rows */
-.home { height: 960px; overflow: hidden; padding: 0 0 60px 72px; }
+.home { height: 960px; overflow: auto; padding: 0 0 60px 72px; }
 .row { margin-bottom: 28px; }
 .row h2 { font-size: 32px; margin: 10px 0 14px; color: var(--creme); }
-.row-items { display: flex; overflow: hidden; padding: 12px 0 18px 4px; }
+.row-items { display: flex; overflow: auto; padding: 12px 0 18px 4px; }
 .tile { flex: none; margin-right: 28px; border-radius: 16px; background: var(--panel); border: 3px solid transparent; position: relative; overflow: hidden; }
 .tile.focus { border-color: var(--oker); transform: scale(1.06); box-shadow: 0 16px 40px rgba(0, 0, 0, .6); }
 .tile-live { width: 300px; height: 210px; }
@@ -81,8 +86,8 @@ body.playing, body.playing html { background: transparent; }
 
 /* lists with a category column */
 .split { display: flex; height: 960px; padding: 0 0 0 72px; }
-.side { width: 440px; flex: none; overflow: hidden; padding: 6px 18px 80px 0; }
-.main { flex: 1; overflow: hidden; padding: 6px 72px 80px 24px; }
+.side { width: 440px; flex: none; overflow: auto; padding: 6px 18px 80px 0; }
+.main { flex: 1; overflow: auto; padding: 6px 72px 80px 24px; }
 .cat { display: block; width: 100%; padding: 12px 20px; margin-bottom: 6px; border-radius: 12px; color: var(--dim); font-size: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 3px solid transparent; }
 .cat.active { color: var(--creme); background: var(--panel); }
 .cat.focus { border-color: var(--oker); color: var(--creme); }
@@ -112,8 +117,8 @@ body.playing, body.playing html { background: transparent; }
 .series-head h1 { margin: 0 0 6px; font-size: 52px; }
 .meta { color: var(--oker); margin: 0 0 12px; }
 .plot { color: var(--creme); opacity: .85; max-width: 1300px; font-size: 24px; line-height: 1.4; max-height: 135px; overflow: hidden; }
-.seasons { display: flex; overflow: hidden; padding: 6px 0 4px; }
-.episodes { height: 420px; overflow: hidden; padding: 8px 0 60px; }
+.seasons { display: flex; overflow: auto; padding: 6px 0 4px; }
+.episodes { height: 420px; overflow: auto; padding: 8px 0 60px; }
 .ep { display: block; position: relative; width: 100%; padding: 14px 22px; margin-bottom: 8px; border-radius: 12px; background: var(--panel); border: 3px solid transparent; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ep b { color: var(--oker); margin-right: 14px; }
 .ep.focus { border-color: var(--oker); background: var(--panel2); }

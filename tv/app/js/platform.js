@@ -29,10 +29,10 @@
     else if (isAndroid) { try { root.BeeldbuisAndroid.exit(); } catch (e) {} }
   }
 
-  // Xtream servers rarely send CORS headers. The TV and Android apps are allowed to call any origin;
-  // the browser preview goes through the preview server's /proxy.
+  // Xtream servers rarely send CORS headers. The Samsung app may call any origin; the Android app
+  // and the browser preview pass provider requests through their own /proxy (same origin as the page).
   function xurl(url) {
-    if (name !== 'browser' || url.indexOf(location.origin) === 0) return url;
+    if (isTizen || url.indexOf(location.origin) === 0) return url;
     return location.origin + '/proxy?u=' + encodeURIComponent(url);
   }
 
