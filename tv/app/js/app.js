@@ -615,6 +615,13 @@
     showHome();
   }
 
+  // native wrappers (Android) deliver keys the WebView does not pass on, e.g. Back and CH▲▼
+  root.BBKey = function (action) {
+    var code = 0;
+    Object.keys(P.KEYS).forEach(function (k) { if (!code && P.KEYS[k] === action) code = +k; });
+    if (action === 'back') code = 27;
+    onKey({ keyCode: code, target: document.activeElement, preventDefault: function () {} });
+  };
   root.BBApp = { start: start, version: VERSION, debug: function () { return { playing: !!play, tab: view.tab, modal: !!$('#modal') }; } };
   start();
 })(this);

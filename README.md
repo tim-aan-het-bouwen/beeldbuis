@@ -12,7 +12,7 @@ recording, movies and series, and a home screen that shows what you actually wan
 | --- | --- | --- |
 | macOS (Apple Silicon) | Working (phase 1) | [`mac/`](mac/) |
 | Samsung TV (Tizen) | First version, tested in the browser | [`tv/`](tv/) |
-| Android TV + phone | Planned (same TV app in a native wrapper) | `android/` |
+| Android TV + phone | First version (TV app in a native wrapper, built by GitHub Actions) | [`android/`](android/) |
 
 The plan: one shared interface everywhere, with a player adapter per device
 (Mac: local Python server + ffmpeg → HLS; Samsung: the TV's own player; Android: Media3/ExoPlayer).
