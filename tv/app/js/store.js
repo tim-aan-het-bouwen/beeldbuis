@@ -9,7 +9,9 @@
     recent: [],               // last watched items, newest first
     positions: {},            // "movie:123" -> {t, d, at}
     lastChannel: null,
-    englishSubs: true
+    englishSubs: true,
+    showAdult: false,
+    quality: 'fhd'            // 'fhd' = Full HD first, 'best' = 4K first
   };
   var state = null;
 
@@ -57,6 +59,7 @@
     catch (e) { /* storage full: just don't cache */ }
   }
   function cacheClear() {
+    if (root.BBIdb) root.BBIdb.clear();
     for (var i = root.localStorage.length - 1; i >= 0; i--) {
       var k = root.localStorage.key(i);
       if (k && k.indexOf('beeldbuis.cache.') === 0) root.localStorage.removeItem(k);

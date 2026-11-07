@@ -159,3 +159,13 @@ body.playing, body.playing #stage { background: transparent; }
 #busyText { margin-top: 18px; color: var(--creme); }
 @keyframes bob { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-14px) rotate(3deg); } }
 #toast { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); background: var(--oker); color: var(--navy); font-weight: 700; padding: 18px 34px; border-radius: 40px; border: 3px solid var(--line); z-index: 40; max-width: 1400px; text-align: center; }
+
+/* search */
+.search { height: 960px; overflow: auto; padding: 10px 0 60px 72px; }
+.search-bar { margin: 0 120px 16px 0; }
+.search-bar input { display: block; width: 100%; padding: 18px 26px; background: var(--panel); border: 3px solid var(--panel2); border-radius: 16px; outline: none; font-size: 34px; }
+.search-bar input.focus { border-color: var(--oker); }
+.search-status { color: var(--dim); min-height: 40px; font-size: 26px; }
+.search-status p { margin: 0 0 8px; }
+.search .empty { padding: 40px; }
+.search::-webkit-scrollbar { display: none; }

@@ -104,15 +104,34 @@ const shots = process.argv[2];
   const rows = await p.$$eval('.row h2', e => e.map(x => x.textContent));
   step('home rows: ' + rows.join(', '), rows.includes('Favourite channels') && rows.includes('Recently watched'));
 
+  // Search
+  await p.click('.tab[data-tab="search"]');
+  await p.waitForSelector('#sq');
+  step('search field focused', (await focused()).startsWith('sq'));
+  await p.keyboard.type('fox');
+  await p.waitForFunction(() => /Blue Fox/.test(document.getElementById('sResults').textContent), null, { timeout: 15000 });
+  await p.waitForFunction(() => !document.getElementById('sStatus').textContent, null, { timeout: 15000 });
+  await shot('11-search');
+  await key('Enter');
+  step('OK in search field jumps to results', (await focused()).includes('Blue Fox'));
+  await key('Enter');
+  await p.waitForSelector('.ep');
+  await key('Escape');
+  await p.waitForSelector('#sq');
+  step('back from series returns to search', (await p.inputValue('#sq')) === 'fox');
+  await p.fill('#sq', 'npo');
+  await p.waitForFunction(() => /NPO 1/.test(document.getElementById('sResults').textContent), null, { timeout: 15000 });
+  step('search finds channels', true);
+
   // Settings
   await p.click('.tab[data-tab="settings"]');
   await p.waitForSelector('.setting');
-  await shot('11-settings');
+  await shot('12-settings');
   await key('Escape');
   step('back from settings goes home', await p.$('.home') !== null);
   await key('Escape');
   step('back on home asks to close', await p.$('#modal') !== null);
-  await shot('12-exit');
+  await shot('13-exit');
 
   step('no script errors' + (errors.length ? ': ' + errors.join(' / ') : ''), errors.length === 0);
   await b.close();

@@ -8,7 +8,7 @@
   // Tizen key codes; the browser preview maps keyboard keys onto the same actions
   var KEYS = {
     37: 'left', 38: 'up', 39: 'right', 40: 'down', 13: 'ok',
-    10009: 'back', 8: 'back', 27: 'back',
+    10009: 'back', 8: 'back', 27: 'back', 65376: 'ok', 65385: 'back',   // 65376/65385: Done/Cancel on the TV keyboard
     427: 'chup', 428: 'chdown', 33: 'chup', 34: 'chdown',
     415: 'play', 19: 'pause', 10252: 'playpause', 413: 'stop', 417: 'ff', 412: 'rw', 32: 'playpause',
     403: 'red', 404: 'green', 405: 'yellow', 406: 'blue',
