@@ -12,8 +12,8 @@ Works with a TV remote (Android TV, Google TV, Fire TV) and with touch on a phon
 
 ## Build
 
-GitHub Actions builds `Beeldbuis.apk` on every push (`.github/workflows/build.yml`); a tag `v*` publishes a
-release with the APK, the Samsung `.wgt` and the Mac update package. Locally: `gradle -p android assembleRelease`
+GitHub Actions builds `Beeldbuis.apk` on every push (`.github/workflows/build.yml`); a new number in `VERSION`
+on main publishes a release with the APK, the Samsung `.wgt` and the Mac update package. Locally: `gradle -p android assembleRelease`
 with the Android SDK installed.
 
 Signing: with the repository secrets `BB_KEYSTORE_BASE64` and `BB_KEYSTORE_PASSWORD` every build is signed with
