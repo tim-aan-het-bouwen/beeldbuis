@@ -20,7 +20,10 @@ img { display: block; }
 ::-webkit-scrollbar { display: none; }
 
 /* video layers sit under everything; the UI hides while playing */
-#avplayer, #video { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #000; }
+#avplayer, #video { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+/* Samsung's player draws on a plane *behind* the page: its <object> must stay see-through, or it hides the picture */
+#avplayer { background: transparent; }
+#video { background: #000; }
 body.playing #top, body.playing #screen { display: none; }
 /* the TV's and Android's video plane sits behind the page: everything must be see-through while playing */
 body.playing, body.playing #stage { background: transparent; }
