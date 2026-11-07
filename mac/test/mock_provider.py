@@ -5,7 +5,7 @@ import hashlib, json, os, re, subprocess, sys, urllib.request, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REAL = os.environ.get("BEELDBUIS_UPSTREAM", "").rstrip("/")  # real Xtream server for metadata, e.g. https://example.org
+REAL = "https://operator1.barfik.org"
 CACHE = os.path.join(HERE, "mockcache")
 MEDIA = os.path.join(HERE, "media", "movie.mkv")
 XMLTV = os.path.join(HERE, "xmltv.raw")

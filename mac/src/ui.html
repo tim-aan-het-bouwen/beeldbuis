@@ -709,6 +709,7 @@ async function play(x, opts){
   current = { x, group, variant, key, kind, ext, sid, offset: opts.t || resumeFrom || 0, info: null, force: !!opts.force, tried: opts.tried || [], stalls: 0, duration: 0, at: Date.now()/1000,
               cu: x._kind === 'catchup' ? { start: x.prog.start, dur: Math.ceil((x.prog.stop - x.prog.start) / 60) } : null,
               posItem: kind === 'live' ? null : { kind, name, sid, ext, extra, icon: x.icon || x.stream_icon || x.cover || '', series: x._series || null, nextKey: null } };
+  if (kind === 'catchup') current.offset = Math.floor(current.offset / 60) * 60;   // timeshift streams start on whole minutes and arrive at real-time pace
   $('#title').textContent = name;
   const qb = $('#btnQuality'); qb.style.display = group && kind === 'live' ? '' : 'none'; if (variant) qb.textContent = qLabel(variant) + ' ▾';
   document.querySelectorAll('.item').forEach(el => el.classList.toggle('active', el.dataset.key === key));
@@ -725,12 +726,14 @@ async function play(x, opts){
   catch (e) {
     if (e.offline) return goOffline();
     if (token !== playToken) return;
-    if (/one connection/i.test(e.message)) return recordingBlocks(x);
+    if (/one connection/i.test(e.message)) { if (await watchOwnRecording(token)) return; return recordingBlocks(x); }
     if (!tryFallback('did not start')) fail(e.message, x);
     return;
   }
   if (token !== playToken) return;
   const info = current.info = res.info;
+  if (typeof res.offset === 'number') current.offset = res.offset;
+  const localSeek = (res.seek || 0) <= 8 ? (res.seek || 0) : 0;   // a longer wait inside a real-time timeshift stream would look like a hang
   current.duration = info.duration || 0;
   if (current.posItem) current.posItem.dur = Math.floor(current.duration);
 
@@ -762,7 +765,7 @@ async function play(x, opts){
     hls.subtitleDisplay = on; hls.subtitleTrack = on ? idx : -1;
     cc.classList.toggle('on', on); cc.textContent = 'CC ' + (on ? 'on' : 'off');
   });
-  video.onloadeddata = () => { if (token===playToken) hideOverlay(); };
+  video.onloadeddata = () => { if (token===playToken) { hideOverlay(); if (localSeek > 0.5) video.currentTime = localSeek; } };
   hls.on(Hls.Events.ERROR, (ev, d) => {
     if (token !== playToken || !d.fatal) return;
     console.warn('hls fatal', d.type, d.details);
@@ -812,6 +815,17 @@ function onEnded(){
   if (!current) return;
   saveProgress(true);
   if (current.kind === 'series' && current.x._next) { const n = current.x._next; toast('Up next: ' + esc(n.name), '', 6000); play(n); }
+}
+async function watchOwnRecording(token){
+  // live TV on the very channel that is being recorded: just watch the recording as it grows
+  if (!current || current.kind !== 'live' || !current.group) return false;
+  await pingLoop();
+  const r = lastPing.rec && lastPing.rec.active; if (!r) return false;
+  const recs = await loadRecordings(); const rec = recs.items.find(i => i.id === r.id);
+  if (!rec || rec.group !== current.group.key || token !== playToken) return false;
+  toast(`<b>${esc(current.group.name)}</b> is being recorded · watching the recording instead`, '', 6000);
+  play(Object.assign({ _kind: 'rec' }, rec));
+  return true;
 }
 function recordingBlocks(x){
   const r = (lastPing.rec && lastPing.rec.active) || {};
@@ -917,7 +931,12 @@ async function pingLoop(){
     }
     const dot = $('#recDot'); dot.style.display = rec.active ? '' : 'none'; if (rec.active) dot.title = 'Recording: ' + rec.active.title;
     // a recording took over the single connection while we were streaming from the provider
-    if (rec.active && current && current.kind !== 'rec' && current.at < rec.active.started && !current.blockedShown) { current.blockedShown = true; recordingBlocks(current.x); }
+    if (rec.active && current && current.kind !== 'rec' && current.at < rec.active.started && !current.blockedShown) {
+      current.blockedShown = true;
+      const rc = (await loadRecordings()).items.find(i => i.id === rec.active.id);
+      if (current.kind === 'live' && current.group && rc && rc.group === current.group.key) { toast(`<b>${esc(current.group.name)}</b> is being recorded · watching the recording instead`, '', 6000); play(Object.assign({ _kind: 'rec' }, rc)); }
+      else recordingBlocks(current.x);
+    }
   } catch {}
 }
 setInterval(pingLoop, 5000); pingLoop();

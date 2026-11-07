@@ -44,9 +44,9 @@ def arg(name, default=None):
 
 PORT = int(arg("--port") or os.environ.get("IPTV_PORT", "8765"))
 HOST = "127.0.0.1"
-UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Beeldbuis/5.0"
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Beeldbuis/6.0"
 AUTO_EXIT = "--auto-exit" in ARGS
-VERSION = 5
+VERSION = 6
 
 if sys.platform == "darwin":
     CONFIG_DIR = os.path.expanduser("~/Library/Application Support/IPTVPlayer")
@@ -134,6 +134,39 @@ def stream_url(kind, sid, ext):
     return "%s/%s/%s/%s/%s.%s" % (server.rstrip("/"), kind, user, pw, sid, ext)
 
 
+def redact(s):
+    """Hide the provider login in anything we log or show (stream URLs contain it)."""
+    user, pw = STATE.get("username") or "", STATE.get("password") or ""
+    for secret in (pw, user):
+        if secret and len(secret) >= 3:
+            s = s.replace(secret, "***")
+    return s
+
+
+def log_write(text):
+    try:
+        with open(LOG_PATH, "ab") as f:
+            f.write(redact(text).encode("utf-8", "replace"))
+    except OSError:
+        pass
+
+
+def log_pipe(proc):
+    """Copy ffmpeg's stderr to ffmpeg.log with the login hidden."""
+    def run():
+        try:
+            for line in iter(proc.stderr.readline, b""):
+                log_write(line.decode("utf-8", "replace"))
+        except Exception:  # noqa
+            pass
+        finally:
+            try:
+                proc.stderr.close()
+            except Exception:  # noqa
+                pass
+    threading.Thread(target=run, daemon=True).start()
+
+
 def normalize_server(s):
     s = s.strip()
     if not s:
@@ -155,10 +188,25 @@ def is_local(target):
     return not target.startswith(("http://", "https://"))
 
 
+_RETRY_RE = re.compile(r"5\d\d|Server returned|Invalid data found|Connection reset|End of file|prematurely|Connection timed out", re.I)
+
+
 def probe(target, cache=True):
-    """Quick look at the codecs so we convert as little as possible (and find English subtitles)."""
+    """Quick look at the codecs so we convert as little as possible (and find English subtitles).
+    The provider sometimes answers 503 / garbage for a moment even with no connection in use, so retry briefly."""
     if cache and target in PROBE_CACHE:
         return PROBE_CACHE[target]
+    for attempt in range(3):
+        info = _probe_once(target)
+        if not info["error"] or is_local(target) or attempt == 2 or not _RETRY_RE.search(info["error"]):
+            break
+        time.sleep(2.5)
+    if not info["error"] and cache:
+        PROBE_CACHE[target] = info
+    return info
+
+
+def _probe_once(target):
     cmd = [FFMPEG, "-hide_banner", "-nostdin", "-user_agent", UA, "-analyzeduration", "3000000",
            "-probesize", "6000000", "-i", target, "-t", "0.01", "-f", "null", "-"]
     if is_local(target):
@@ -192,7 +240,7 @@ def probe(target, cache=True):
         info["duration"] = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
     if not info["vcodec"] and not info["acodec"]:
         last = [l for l in err.strip().splitlines() if l.strip()]
-        info["error"] = last[-1][:200] if last else "Stream not reachable"
+        info["error"] = redact(last[-1][:200]) if last else "Stream not reachable"
     # Which English text subtitle (if any) and which audio track to use
     eng = [s for s in info["subs"] if s["text"] and s["lang"] in ("eng", "en", "english")]
     info["sub"] = eng[0]["i"] if eng else None
@@ -210,8 +258,6 @@ def probe(target, cache=True):
         info["mode"] = "copy"        # only repackage (and convert audio if needed)
     else:
         info["mode"] = "transcode"   # re-encode video (mpeg2 etc.)
-    if not info["error"] and cache:
-        PROBE_CACHE[target] = info
     return info
 
 
@@ -288,9 +334,9 @@ def start_session(target, info, start, force, live, follow=False):
     outdir = os.path.join(HLS_DIR, sid)
     os.makedirs(outdir, exist_ok=True)
     cmd = ffmpeg_cmd(target, info, outdir, start, force, live, follow)
-    logf = open(LOG_PATH, "ab")
-    logf.write(("\n--- %s %s\n%s\n" % (time.strftime("%H:%M:%S"), sid, " ".join(cmd[:-12]))).encode())
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logf, stdin=subprocess.DEVNULL)
+    log_write("\n--- %s %s\n%s\n" % (time.strftime("%H:%M:%S"), sid, " ".join(cmd[:-12])))
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+    log_pipe(proc)
     PROCS.add(proc)
     with SESS_LOCK:
         SESSIONS[sid] = {"proc": proc, "dir": outdir, "t": time.time(), "local": is_local(target)}
@@ -341,15 +387,21 @@ def kill_all():
 
 
 # -------------------------------------------------------------- catch-up ----
+DEFAULT_TZ = "Europe/Amsterdam"
+
+
 def server_tz():
-    """Provider's server time zone (xtream server_info.timezone), default UTC."""
+    """Time zone the provider uses in timeshift URLs. The provider reports "UTC" in server_info but actually counts
+    in Dutch time (checked against real catch-up on 7 Nov 2026), so this is a setting (catchup_tz) with a Dutch default."""
     with LOCK:
-        name = STATE.get("server_tz") or "UTC"
-    try:
-        import zoneinfo
-        return zoneinfo.ZoneInfo(name)
-    except Exception:  # noqa
-        return datetime.timezone.utc
+        name = (STATE["settings"].get("catchup_tz") or "").strip() or DEFAULT_TZ
+    import zoneinfo
+    for cand in (name, DEFAULT_TZ):
+        try:
+            return zoneinfo.ZoneInfo(cand)
+        except Exception:  # noqa
+            continue
+    return datetime.timezone.utc
 
 
 def timeshift_url(sid, start_ts, minutes):
@@ -509,11 +561,11 @@ def rec_spawn(rec, append=False):
            "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "10",
            "-fflags", "+genpts+discardcorrupt", "-i", url, "-map", "0:v?", "-map", "0:a?", "-map", "0:s?", "-ignore_unknown",
            "-c", "copy", "-f", "mpegts", "pipe:1"]
-    logf = open(LOG_PATH, "ab")
-    logf.write(("\n--- %s REC%s %s -> %s\n" % (time.strftime("%H:%M:%S"), " restart" if append else "", rec["id"], rec["file"])).encode())
+    log_write("\n--- %s REC%s %s -> %s\n" % (time.strftime("%H:%M:%S"), " restart" if append else "", rec["id"], rec["file"]))
     out = open(rec["file"], "ab" if append else "wb")
-    proc = subprocess.Popen(cmd, stdout=out, stderr=logf, stdin=subprocess.PIPE)
+    proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
     out.close()
+    log_pipe(proc)
     PROCS.add(proc)
     with REC_LOCK:
         RECS["procs"][rec["id"]] = proc
@@ -1633,7 +1685,7 @@ class Handler(BaseHTTPRequestHandler):
             raise RuntimeError("Login failed: wrong username or password")
         si = info.get("server_info", {}) if isinstance(info, dict) else {}
         with LOCK:
-            STATE["server_tz"] = si.get("timezone") or "UTC"
+            STATE["server_tz"] = si.get("timezone") or DEFAULT_TZ
         save_config()
         PROBE_CACHE.clear()
         threading.Thread(target=lambda: (catalog_refresh(force=True), epg_refresh(force=True)), daemon=True).start()
@@ -1680,6 +1732,11 @@ class Handler(BaseHTTPRequestHandler):
             follow = rec["status"] == "recording"
             info = probe(target, cache=not follow)
             if follow:
+                deadline = time.time() + 15      # a recording that has just started holds too little data to probe yet
+                while info.get("error") and time.time() < deadline:
+                    time.sleep(1.5)
+                    info = probe(target, cache=False)
+            if follow:
                 info["mode"] = "copy"
                 info["duration"] = max(0, time.time() - rec.get("started", rec["start"]))
         else:
@@ -1692,17 +1749,18 @@ class Handler(BaseHTTPRequestHandler):
             if kind == "catchup":
                 if not cu_start or not cu_dur:
                     raise RuntimeError("Missing catch-up times")
-                skip_min = int(start // 60)
+                skip_min = min(int(start // 60), max(0, cu_dur - 1))
                 target = timeshift_url(sid, cu_start + skip_min * 60, max(1, cu_dur - skip_min))
                 info = dict(probe(target))
                 if info.get("error"):
                     raise RuntimeError("Catch-up not available: " + info["error"])
                 info["mode"] = "copy" if info.get("vcodec") in COPY_VIDEO else "transcode"
                 info["duration"] = cu_dur * 60
-                sess, pl, err = start_session(target, info, start - skip_min * 60, force, live=False)
+                sess, pl, err = start_session(target, info, 0, force, live=False)
                 if err:
                     raise RuntimeError(err)
-                return {"playlist": "/hls/%s/%s" % (sess, pl), "info": info, "offset": start}
+                # the timeshift stream arrives at roughly real-time speed, so the seconds within the minute are skipped by the player
+                return {"playlist": "/hls/%s/%s" % (sess, pl), "info": info, "offset": skip_min * 60, "seek": max(0, start - skip_min * 60)}
             target = stream_url(kind, sid, ext or ("ts" if kind == "live" else "mp4"))
             info = PROBE_CACHE.get(target) or probe(target)
         if info.get("error"):
