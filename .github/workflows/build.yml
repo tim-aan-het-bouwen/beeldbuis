@@ -3,7 +3,6 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -41,10 +40,11 @@ jobs:
       - name: Build
         env:
           BB_VERSION_CODE: ${{ github.run_number }}
-          BB_VERSION_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.1.{0}', github.run_number) }}
+          BB_VERSION_NAME: ${{ github.run_number }}
           KEYSTORE_B64: ${{ secrets.BB_KEYSTORE_BASE64 }}
           BB_KEYSTORE_PASSWORD: ${{ secrets.BB_KEYSTORE_PASSWORD }}
         run: |
+          export BB_VERSION_NAME="$(cat VERSION)"
           # With the signing secrets every build has the same key, so updates install over the old app.
           if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/bb.jks"; export BB_KEYSTORE="$RUNNER_TEMP/bb.jks"; fi
           gradle -p android assembleRelease --no-daemon
@@ -70,12 +70,17 @@ jobs:
         with: { name: Beeldbuis-mac-update, path: dist/Beeldbuis-mac-update.zip }
 
   release:
+    # A new number in VERSION on main publishes a release vX.Y.Z with all three downloads.
     name: Publish release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [tv, android, mac]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
       - env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh release create "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --title "Beeldbuis ${{ github.ref_name }}" --generate-notes
+        run: |
+          V="v$(cat VERSION)"
+          if gh release view "$V" --repo "${{ github.repository }}" > /dev/null 2>&1; then echo "$V already released"; exit 0; fi
+          gh release create "$V" dist/* --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Beeldbuis $V" --generate-notes
