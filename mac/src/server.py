@@ -44,9 +44,9 @@ def arg(name, default=None):
 
 PORT = int(arg("--port") or os.environ.get("IPTV_PORT", "8765"))
 HOST = "127.0.0.1"
-UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Beeldbuis/3.0"
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Beeldbuis/5.0"
 AUTO_EXIT = "--auto-exit" in ARGS
-VERSION = 4
+VERSION = 5
 
 if sys.platform == "darwin":
     CONFIG_DIR = os.path.expanduser("~/Library/Application Support/IPTVPlayer")
@@ -850,6 +850,7 @@ def catalog_refresh(force=False):
             CATALOG.update({"t": data["t"], "cats": cats, "groups": groups, "by_stream": by_stream,
                             "by_key": {g["key"]: g for g in groups}, "status": "idle"})
         migrate_favorites()
+        tv_schedule("channel list")
         return True
     except Exception as e:  # noqa
         with CATALOG_LOCK:
@@ -990,6 +991,7 @@ def epg_refresh(force=False):
             conn.close()
         with EPG_LOCK:
             EPG["status"] = "idle"
+        tv_schedule("tv guide", delay=10)
         return True
     except Exception as e:  # noqa
         with EPG_LOCK:
@@ -1054,6 +1056,339 @@ def epg_search(q, limit=300):
 def epg_status():
     return {"updated": EPG["t"], "status": EPG["status"], "error": EPG["error"], "count": EPG["count"],
             "first": EPG["first"], "last": EPG["last"], "next": EPG["t"] + EPG_TTL if EPG["t"] else 0}
+
+
+
+# ------------------------------------------------------------- tv export ----
+# Cleaned-up M3U playlist for the Samsung TV (SmartOne IPTV), written to a folder in Dropbox.
+# Built from exactly the app's channel settings: hidden categories, favourites, merged variants.
+TV = {"status": "idle", "error": None, "t": 0, "changed": 0, "n": 0, "favs": 0, "groups": 0,
+      "path": "", "guide_path": "", "guide_n": 0, "reason": ""}
+TV_LOCK = threading.Lock()
+TV_TIMER = {"t": None}
+TV_M3U_NAME = "Beeldbuis TV.m3u"
+TV_GUIDE_NAME = "Beeldbuis TV guide.xml"
+TV_QORDER = {"best": ["4K", "8K", "RAW", "FHD", "HD", "", "SD"],
+             "FHD": ["FHD", "HD", "", "4K", "8K", "RAW", "SD"],
+             "HD": ["HD", "", "FHD", "4K", "8K", "RAW", "SD"]}
+_TV_BACKUP_RE = re.compile(r"(?<![A-Z0-9])(BACKUP|BK|TEST)(?![A-Z0-9])")
+_TV_CAT_DROP_RE = re.compile(r"(?<![A-Z0-9])(8K|4K|UHD|FHD|HD|SD|RAW|HEVC|H265|LQ|HQ|VIP|BACKUP|BK|ULTRA|HDR|50FPS|60FPS|"
+                             r"60 ?FPS|1080P|720P|2160P|GOLD|SUPE)(?![A-Z0-9])")
+# short words that are ordinary words, not acronyms -> title case
+_TV_WORDS = {"SKY", "NOW", "ONE", "TWO", "RED", "CUP", "BOX", "AND", "THE", "NEW", "BIG", "ALL", "OF", "TEAM", "LIVE",
+             "TV", "PLUS", "PER", "HUB", "GO", "PRO", "PAY"}
+_TV_ACRONYMS = {"PPV", "BBC", "BBCI", "UFC", "EPL", "NFL", "NBA", "NHL", "MLB", "F1", "GAA", "PDC", "DAZN", "ESPN", "HBO",
+                "MAX", "TNT", "TT", "FA", "MOLA", "MXGP", "ITV", "NPO", "RTL", "SBS", "UEFA", "USA", "UK", "NL", "BE", "PSF",
+                "TV", "24/7"}
+
+
+def tv_settings():
+    with LOCK:
+        st = dict(STATE["settings"])
+    return {"dir": (st.get("tv_dir") or "").strip(), "auto": st.get("tv_auto", True) is not False,
+            "quality": st.get("tv_quality") or "FHD", "hidden": set(str(c) for c in st.get("hidden_cats") or []),
+            "manual": dict(st.get("q_manual") or {})}
+
+
+def dropbox_dirs():
+    """Dropbox folders on this Mac (personal first), from Dropbox's own info.json, else the usual places."""
+    out = []
+    try:
+        with open(os.path.expanduser("~/.dropbox/info.json"), "r", encoding="utf-8") as f:
+            info = json.load(f)
+        for k in ("personal", "business"):
+            p = (info.get(k) or {}).get("path")
+            if p and os.path.isdir(p):
+                out.append(p)
+    except (OSError, ValueError, AttributeError):
+        pass
+    cands = []
+    cs = os.path.expanduser("~/Library/CloudStorage")
+    try:
+        cands += sorted(os.path.join(cs, d) for d in os.listdir(cs) if d.startswith("Dropbox"))
+    except OSError:
+        pass
+    home = os.path.expanduser("~")
+    try:
+        cands += sorted(os.path.join(home, d) for d in os.listdir(home) if d.startswith("Dropbox"))
+    except OSError:
+        pass
+    for p in cands:
+        if os.path.isdir(p) and os.path.realpath(p) not in [os.path.realpath(x) for x in out]:
+            out.append(p)
+    return out
+
+
+def tv_suggested_dir():
+    d = dropbox_dirs()
+    return os.path.join(d[0], "Beeldbuis") if d else ""
+
+
+_TV_SPECIAL = {"BBCIPLAYER": "BBC iPlayer", "IPLAYER": "iPlayer", "TELE2": "Tele2", "ITVX": "ITVX", "MOTOGP": "MotoGP"}
+
+
+def tv_word(w):
+    if "/" in w and w != "24/7":
+        return "/".join(tv_word(p) for p in w.split("/"))
+    if w in _TV_SPECIAL:
+        return _TV_SPECIAL[w]
+    base, plus = (w[:-1], "+") if w.endswith("+") and len(w) > 1 else (w, "")
+    if not base.isalpha() or base in _TV_ACRONYMS:
+        return w
+    if len(base) <= 3 and base not in _TV_WORDS:
+        return w
+    return base[:1] + base[1:].lower() + plus
+
+
+def tv_group_title(cat):
+    """'NL| SPORT' -> 'NL · Sport', 'UK| GENERAL HEVC' -> 'UK · General'."""
+    if not cat:
+        return "Other"
+    name = (cat.get("name") or "").translate(_SUP_TR).replace("\xa0", " ")
+    country = cat.get("country") or "OTHER"
+    rest = name.split("|", 1)[1] if "|" in name else name
+    up = _TV_CAT_DROP_RE.sub(" ", rest.upper())
+    up = re.sub(r"\s+", " ", up).strip(" -–|:.")
+    if not up:
+        up = "CHANNELS"
+    title = " ".join(tv_word(w) for w in up.split(" "))
+    if country == "OTHER":
+        return title
+    return "%s · %s" % (country, title)
+
+
+def tv_pick(g, hidden, order, manual):
+    vars_ = [v for v in g["variants"] if str(v["cat"]) not in hidden]
+    if not vars_:
+        return None
+    m = manual.get(g["key"])
+    if m:
+        v = next((v for v in vars_ if str(v["id"]) == str(m)), None)
+        if v:
+            return v
+    rank = {q: i for i, q in enumerate(order)}
+    def score(v):
+        nm = (v.get("name") or "").translate(_SUP_TR).upper()
+        return (rank.get(v["q"], len(order)), 1 if _TV_BACKUP_RE.search(nm) else 0)
+    return min(vars_, key=score)   # min() is stable: provider order breaks ties
+
+
+def tv_home_cat(g, v, hidden, cat_by_id, cat_pos):
+    """The category a channel is listed under: the chosen stream's category, unless that is only a
+    quality bucket ('NEDERLAND ULTRA 4K', 'GENERAL HEVC') and the channel also sits in a normal one."""
+    own = cat_by_id.get(str(v["cat"]))
+    if own and not category_quality(own["name"]):
+        return own
+    vis = sorted((c for c in g["cats"] if str(c) not in hidden and str(c) in cat_by_id), key=lambda c: cat_pos.get(str(c), 1 << 30))
+    for c in vis:
+        if not category_quality(cat_by_id[str(c)]["name"]):
+            return cat_by_id[str(c)]
+    return own
+
+
+def _attr(s):
+    return re.sub(r"[\r\n\"]+", " ", str(s or "")).strip()
+
+
+def tv_build():
+    """Returns (m3u text, [epg ids], stats)."""
+    cfg = tv_settings()
+    hidden, manual = cfg["hidden"], cfg["manual"]
+    order = TV_QORDER.get(cfg["quality"], TV_QORDER["FHD"])
+    with CATALOG_LOCK:
+        groups = list(CATALOG["groups"])
+        cats = list(CATALOG["cats"])
+        by_key = CATALOG["by_key"]
+    if not groups:
+        raise RuntimeError("The channel list is not loaded yet; try again in a minute.")
+    with LOCK:
+        server, user, pw = STATE["server"], STATE["username"], STATE["password"]
+        favs = [k[3:] for k in STATE["favorites"] if k.startswith("ch:")]
+    cat_by_id = {c["id"]: c for c in cats}
+    cat_pos = {c["id"]: i for i, c in enumerate(cats)}
+    def country_rank(c):
+        return (0 if c == "NL" else 1 if c == "UK" else 3 if c == "OTHER" else 2, c)
+
+    rows = []          # (group title, sort key, group, variant)
+    done = set()
+    for key in favs:
+        g = by_key.get(key)
+        if not g or key in done:
+            continue
+        v = tv_pick(g, hidden, order, manual)
+        if not v:
+            continue
+        done.add(key)
+        rows.append(("★ Favourites", (0,), g, v))
+    nfav = len(rows)
+    buckets = {}
+    for i, g in enumerate(groups):
+        if g["key"] in done:
+            continue
+        v = tv_pick(g, hidden, order, manual)
+        if not v:
+            continue
+        cat = tv_home_cat(g, v, hidden, cat_by_id, cat_pos)
+        title = tv_group_title(cat)
+        sk = (1, country_rank(cat.get("country") if cat else "OTHER"), cat_pos.get(cat["id"] if cat else "", 1 << 30))
+        b = buckets.get(title)
+        if b is None or sk < b:
+            buckets[title] = sk
+        rows.append((title, None, g, v, i))
+    fav_rows = rows[:nfav]
+    other = sorted(rows[nfav:], key=lambda r: (buckets[r[0]], r[4]))
+    epg_url = "%s/xmltv.php?username=%s&password=%s" % (server.rstrip("/"), urllib.parse.quote(user), urllib.parse.quote(pw))
+    out = ['#EXTM3U x-tvg-url="%s" url-tvg="%s"' % (epg_url, epg_url),
+           "#PLAYLIST:Beeldbuis"]
+    epg_ids = []
+    n = 0
+    for r in fav_rows + other:
+        title, g, v = r[0], r[2], r[3]
+        n += 1
+        name = g["name"]
+        if "|" in name:   # event channel ("NEXT | UFC ... | Sun 08 Nov 00:00 CET"): keep the provider's own text
+            name = re.sub(r"\s+", " ", (v.get("name") or name).translate(_SUP_TR)).strip()
+        attrs = ['tvg-id="%s"' % _attr(g.get("epg")), 'tvg-name="%s"' % _attr(name),
+                 'tvg-logo="%s"' % _attr(g.get("icon")), 'tvg-chno="%d"' % n, 'group-title="%s"' % _attr(title)]
+        out.append("#EXTINF:-1 %s,%s" % (" ".join(attrs), _attr(name).replace(",", " ")))
+        out.append(stream_url("live", v["id"], "ts"))
+        if g.get("epg"):
+            epg_ids.append((g["epg"], g["name"], g.get("icon") or ""))
+    text = "\n".join(out) + "\n"
+    stats = {"n": n, "favs": nfav, "groups": len(buckets) + (1 if nfav else 0)}
+    return text, epg_ids, stats
+
+
+def tv_guide_xml(epg_ids):
+    """Small XMLTV file with only the playlist's channels (the provider's full guide is ~50 MB)."""
+    from xml.sax.saxutils import escape, quoteattr
+    seen = {}
+    for eid, name, icon in epg_ids:
+        if eid not in seen:
+            seen[eid] = (name, icon)
+    now = int(time.time())
+    rows = epg_rows(list(seen), now - 6 * 3600, now + 14 * 86400) if seen else {}
+    fmt = lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y%m%d%H%M%S +0000")  # noqa: E731
+    out = ['<?xml version="1.0" encoding="UTF-8"?>', '<tv generator-info-name="Beeldbuis">']
+    for eid, (name, icon) in seen.items():
+        out.append('<channel id=%s><display-name>%s</display-name>%s</channel>' % (
+            quoteattr(eid), escape(name), ('<icon src=%s/>' % quoteattr(icon)) if icon else ""))
+    n = 0
+    for eid in seen:
+        for p in rows.get(eid, []):
+            n += 1
+            out.append('<programme start="%s" stop="%s" channel=%s><title>%s</title>%s</programme>' % (
+                fmt(p["start"]), fmt(p["stop"]), quoteattr(eid), escape(p["title"] or ""),
+                ("<desc>%s</desc>" % escape(p["description"])) if p.get("description") else ""))
+    out.append("</tv>")
+    return "\n".join(out) + "\n", n
+
+
+def tv_write(path, text):
+    """Write only when the content changed, in place (keeps the same Dropbox file and share link)."""
+    data = text.encode("utf-8")
+    try:
+        with open(path, "rb") as f:
+            if f.read() == data:
+                return False
+    except OSError:
+        pass
+    with open(path, "wb") as f:
+        f.write(data)
+    return True
+
+
+def tv_export(reason="manual", folder=None):
+    cfg = tv_settings()
+    folder = (folder or cfg["dir"]).strip()
+    if not folder:
+        raise RuntimeError("Choose a folder for the TV playlist first (Settings → TV playlist).")
+    folder = os.path.expanduser(folder)
+    with TV_LOCK:
+        if TV["status"] == "busy":
+            raise RuntimeError("The TV playlist is being written right now; try again in a few seconds.")
+        TV["status"] = "busy"
+    try:
+        text, epg_ids, stats = tv_build()
+        try:
+            os.makedirs(folder, exist_ok=True)
+            path = os.path.join(folder, TV_M3U_NAME)
+            changed = tv_write(path, text)
+        except PermissionError:
+            raise RuntimeError("macOS does not allow Beeldbuis to write in %s. Allow it in System Settings → "
+                               "Privacy & Security → Files and Folders, or choose another folder." % folder)
+        except OSError as e:
+            raise RuntimeError("Could not write the TV playlist in %s: %s" % (folder, e.strerror or e))
+        guide_path, guide_n = "", 0
+        try:
+            gx, guide_n = tv_guide_xml(epg_ids)
+            guide_path = os.path.join(folder, TV_GUIDE_NAME)
+            tv_write(guide_path, gx)
+        except Exception as e:  # noqa  (guide is a bonus; the playlist matters)
+            guide_path = ""
+            print("TV guide not written: %s" % e)
+        now = int(time.time())
+        with TV_LOCK:
+            TV.update({"status": "idle", "error": None, "t": now, "path": path, "guide_path": guide_path,
+                       "guide_n": guide_n, "reason": reason, **stats})
+            if changed:
+                TV["changed"] = now
+        return tv_status()
+    except Exception as e:
+        with TV_LOCK:
+            TV["status"] = "idle"
+            TV["error"] = str(e)
+        raise
+
+
+def tv_schedule(reason="settings", delay=3.0):
+    """Re-write the playlist shortly after a change (debounced), when a folder is set and auto-update is on."""
+    cfg = tv_settings()
+    if not cfg["dir"] or not cfg["auto"]:
+        return
+    t = TV_TIMER.get("t")
+    if t:
+        t.cancel()
+    def run():
+        try:
+            tv_export(reason)
+        except Exception as e:  # noqa
+            print("TV playlist not written: %s" % e)
+    TV_TIMER["t"] = threading.Timer(delay, run)
+    TV_TIMER["t"].daemon = True
+    TV_TIMER["t"].start()
+
+
+def tv_status():
+    cfg = tv_settings()
+    with TV_LOCK:
+        st = dict(TV)
+    st.update({"dir": cfg["dir"], "auto": cfg["auto"], "quality": cfg["quality"], "suggested": tv_suggested_dir(),
+               "dropbox": dropbox_dirs(), "file": TV_M3U_NAME, "guide_file": TV_GUIDE_NAME})
+    return st
+
+
+def tv_choose_folder():
+    """Native macOS folder picker (runs in Tim's login session via the launchd agent)."""
+    if sys.platform != "darwin":
+        raise RuntimeError("Type the folder path instead.")
+    start = tv_settings()["dir"] or (dropbox_dirs() or [os.path.expanduser("~")])[0]
+    while start and not os.path.isdir(start):
+        start = os.path.dirname(start)
+    script = ('tell application "System Events" to activate\n'
+              'set f to choose folder with prompt "Choose the Dropbox folder for the Beeldbuis TV playlist"'
+              + (' default location (POSIX file %s)' % json.dumps(start) if start else "") +
+              '\nreturn POSIX path of f')
+    try:
+        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("No folder chosen.")
+    if r.returncode != 0:
+        if "-128" in (r.stderr or ""):
+            return {"cancelled": True}
+        raise RuntimeError("The folder picker did not open (%s). Type the folder path instead." % (r.stderr or "").strip()[:160])
+    path = r.stdout.strip().rstrip("/")
+    return {"path": path}
 
 
 def background_refresher():
@@ -1188,6 +1523,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True})
         if path == "/api/recordings":
             return self.api(rec_list)
+        if path == "/api/tv":
+            return self.api(tv_status)
         if path == "/api/positions":
             with LOCK:
                 pos = dict(STATE["positions"])
@@ -1215,6 +1552,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 STATE["settings"].update(body or {})
             save_config()
+            tv_schedule("settings")
             return self.send_json({"ok": True})
         if path == "/api/record":
             return self.api(lambda: rec_schedule(self.read_json_body()))
@@ -1249,7 +1587,12 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 STATE["favorites"] = body.get("favorites", [])
             save_config()
+            tv_schedule("favourites")
             return self.send_json({"ok": True})
+        if path == "/api/tv/export":
+            return self.api(lambda: tv_export("manual"))
+        if path == "/api/tv/choose-folder":
+            return self.api(tv_choose_folder)
         if path == "/api/quit":
             self.send_json({"ok": True})
             threading.Timer(0.3, shutdown).start()

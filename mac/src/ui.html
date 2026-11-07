@@ -286,6 +286,17 @@
       <h3>Channel categories <span class="hint" id="sHiddenInfo"></span></h3>
       <p class="hint">Untick what you never watch; those channels disappear from the lists and the guide. <button class="btn small" id="sOnlyNLUK">Keep only NL and UK</button> <button class="btn small" id="sAll">Show everything</button></p>
       <div id="sCats"></div>
+      <h3>TV playlist <span class="hint">Samsung · SmartOne IPTV</span></h3>
+      <p class="hint">A cleaned-up playlist for the TV, made from exactly these settings: only the categories ticked above, your favourites on top, one stream per channel. Saved in a Dropbox folder so the TV always loads the latest version.</p>
+      <label>Folder (in Dropbox)</label>
+      <div style="display:flex;gap:8px"><input id="sTvDir" placeholder="~/Dropbox/Beeldbuis" style="flex:1"><button class="btn small" id="sTvChoose">Choose…</button></div>
+      <div style="display:flex;gap:12px;align-items:flex-end"><div style="flex:1"><label>Quality on the TV</label><select id="sTvQuality">
+        <option value="FHD">Full HD, fall back to HD (most stable)</option>
+        <option value="HD">HD</option>
+        <option value="best">Best available (4K / RAW when offered)</option>
+      </select></div></div>
+      <label><input type="checkbox" id="sTvAuto" style="accent-color:var(--teal);width:15px;height:15px;vertical-align:-2px"> Update the TV playlist automatically when channels, categories or favourites change</label>
+      <p style="margin-top:8px"><button class="btn primary small" id="sTvExport">Export TV playlist</button> <span class="hint" id="sTvInfo"></span></p>
       <h3>Data</h3>
       <p class="hint" id="sData"></p>
       <p><button class="btn small" id="sRefreshChannels">Refresh channel list</button> <button class="btn small" id="sRefreshEpg">Refresh TV guide now</button></p>
@@ -358,6 +369,7 @@ async function checkStatus(){
       if (!s.ffmpeg) m.push('⚠ ffmpeg missing');
       $('#meta').dataset.base = m.join(' · '); renderMeta();
       settings = Object.assign({ quality: 'FHD', hidden_cats: [] }, await api('/api/settings'));
+      syncManualQuality();
       try { positions = await api('/api/positions'); } catch {}
       await loadRecordings();
       await loadTab();
@@ -639,9 +651,9 @@ $('#btnQuality').onclick = ev => {
     `<div class="mi" data-id="auto"><span class="hint">Automatic (${esc(settings.quality === 'best' ? 'best available' : settings.quality)})</span></div>`;
   menu.querySelectorAll('.mi').forEach(mi => mi.onclick = () => {
     menu.classList.add('hidden');
-    if (mi.dataset.id === 'auto') { ls.set('q:' + g.key, null); localStorage.removeItem('q:' + g.key); play(g); return; }
+    if (mi.dataset.id === 'auto') { ls.set('q:' + g.key, null); localStorage.removeItem('q:' + g.key); syncManualQuality(); play(g); return; }
     const v = g.variants.find(v => v.id === Number(mi.dataset.id)); if (!v) return;
-    ls.set('q:' + g.key, v.id); play(g, { variant: v });
+    ls.set('q:' + g.key, v.id); syncManualQuality(); play(g, { variant: v });
   });
   const r = ev.currentTarget.getBoundingClientRect();
   menu.style.left = Math.min(r.left, window.innerWidth - 300) + 'px'; menu.style.top = (r.top - 8) + 'px'; menu.style.transform = 'translateY(-100%)';
@@ -1045,17 +1057,70 @@ function openSettings(){
   $('#sCats').querySelectorAll('.hd').forEach(h => h.onclick = ev => { if (ev.target.tagName !== 'INPUT') h.parentElement.classList.toggle('open'); });
   const sd = status.catalog || {}, se = status.epg || {};
   $('#sData').innerHTML = `Channel list: ${sd.n ? sd.n.toLocaleString('en-GB') + ' channels, updated ' + ago(sd.t) : 'not loaded yet'} (refreshes every 12 h).<br>TV guide: ${se.count ? se.count.toLocaleString('en-GB') + ' programmes, updated ' + ago(se.updated) + ', next refresh ' + fmtDateTime(se.next) : (se.status === 'busy' ? 'fetching…' : 'not loaded yet')}${se.error ? '<br><span style="color:var(--danger)">Last error: ' + esc(se.error) + '</span>' : ''}.`;
+  loadTv();
   $('#settingsModal').classList.remove('hidden');
 }
 $('#btnSettings').onclick = openSettings;
 $('#sCancel').onclick = () => $('#settingsModal').classList.add('hidden');
 $('#sOnlyNLUK').onclick = () => $('#sCats').querySelectorAll('.ctry').forEach(c => c.querySelectorAll('input').forEach(i => i.checked = ['NL','UK'].includes(c.dataset.c)));
 $('#sAll').onclick = () => $('#sCats').querySelectorAll('input').forEach(i => i.checked = true);
+// ---------- TV playlist (SmartOne)
+let tvStatus = {};
+function tvInfoText(){
+  const t = tvStatus;
+  if (t.status === 'busy') return 'Writing…';
+  let s = '';
+  if (t.t) s = `Written ${ago(t.t)}: ${t.n.toLocaleString('en-GB')} channels in ${t.groups} groups (${t.favs} favourites)` + (t.guide_n ? `, guide with ${t.guide_n.toLocaleString('en-GB')} programmes` : '') + '.';
+  else if (t.dir) s = 'Not written yet.';
+  else s = t.suggested ? 'Suggested folder: ' + t.suggested : 'No Dropbox folder found on this Mac; choose any folder.';
+  if (t.error) s += ' Last error: ' + t.error;
+  return s;
+}
+async function loadTv(){
+  try { tvStatus = await api('/api/tv'); } catch { tvStatus = {}; }
+  $('#sTvDir').value = settings.tv_dir || '';
+  $('#sTvDir').placeholder = tvStatus.suggested || '~/Dropbox/Beeldbuis';
+  $('#sTvQuality').value = settings.tv_quality || 'FHD';
+  $('#sTvAuto').checked = settings.tv_auto !== false;
+  $('#sTvInfo').textContent = tvInfoText();
+  $('#sTvInfo').style.color = tvStatus.error ? 'var(--danger)' : '';
+}
+function tvFields(){
+  return { tv_dir: $('#sTvDir').value.trim(), tv_quality: $('#sTvQuality').value, tv_auto: $('#sTvAuto').checked };
+}
+$('#sTvChoose').onclick = async () => {
+  const b = $('#sTvChoose'); b.disabled = true; b.textContent = 'Look for the window…';
+  try { const r = await post('/api/tv/choose-folder'); if (r && r.path) $('#sTvDir').value = r.path; }
+  catch (e) { toast(e.message, 'warn'); }
+  finally { b.disabled = false; b.textContent = 'Choose…'; }
+};
+$('#sTvExport').onclick = async () => {
+  const f = tvFields();
+  if (!f.tv_dir) { f.tv_dir = tvStatus.suggested || ''; $('#sTvDir').value = f.tv_dir; }
+  if (!f.tv_dir) { toast('Choose a folder first.', 'warn'); return; }
+  // export uses the categories as ticked right now, so save those too
+  settings.hidden_cats = [...$('#sCats').querySelectorAll('.cats input')].filter(i => !i.checked).map(i => i.dataset.id);
+  Object.assign(settings, f);
+  const b = $('#sTvExport'); b.disabled = true; $('#sTvInfo').textContent = 'Writing…';
+  try {
+    await post('/api/settings', settings);
+    tvStatus = await post('/api/tv/export');
+    toast(`TV playlist saved: ${tvStatus.n.toLocaleString('en-GB')} channels.`);
+  } catch (e) { toast(e.message, 'warn'); try { tvStatus = await api('/api/tv'); } catch {} }
+  finally { b.disabled = false; $('#sTvInfo').textContent = tvInfoText(); $('#sTvInfo').style.color = tvStatus.error ? 'var(--danger)' : ''; }
+};
+function syncManualQuality(){
+  // per-channel quality picks (Quality button) also count for the TV playlist
+  const m = {};
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('q:')) { const v = ls.get(k, null); if (v) m[k.slice(2)] = v; } } } catch {}
+  if (JSON.stringify(m) !== JSON.stringify(settings.q_manual || {})) { settings.q_manual = m; post('/api/settings', { q_manual: m }).catch(()=>{}); }
+}
 $('#sRefreshChannels').onclick = async () => { await post('/api/channels/refresh'); toast('Refreshing the channel list…'); };
 $('#sRefreshEpg').onclick = async () => { await post('/api/epg/refresh'); toast('Refreshing the TV guide; this takes a minute or two.'); };
 $('#sSave').onclick = async () => {
   settings.quality = $('#sQuality').value; settings.subs = $('#sSubs').checked; settings.rec_before = Number($('#sRecBefore').value); settings.rec_after = Number($('#sRecAfter').value);
   settings.hidden_cats = [...$('#sCats').querySelectorAll('.cats input')].filter(i => !i.checked).map(i => i.dataset.id);
+  Object.assign(settings, tvFields());
   await post('/api/settings', settings);
   $('#settingsModal').classList.add('hidden');
   if (tab === 'live') { const prev = catEl.value; catOptions(catEl, '<option value="__fav">★ Favourites</option><option value="">All channels</option>'); catEl.value = [...catEl.options].some(o => o.value===prev) ? prev : ''; items = visibleGroups(); limit = 300; render(); }
