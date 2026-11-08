@@ -20,8 +20,8 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 DEMO_CATS = [("1", "NL| GENERAL"), ("2", "NL| SPORT"), ("3", "UK| SPORTS"), ("4", "US| NEWS"), ("5", "4K| UHD")]
 DEMO_CHANNELS = [
     ("1", "NL| NPO 1 HD"), ("1", "NL| NPO 1 FHD"), ("1", "NL| NPO 2 HD"), ("1", "NL| RTL 4 ᴴᴰ"), ("1", "NL| SBS 6"),
-    ("2", "NL| ZIGGO SPORT FHD"), ("2", "NL| ZIGGO SPORT 2 HD"), ("2", "NL| ESPN 1 FHD"), ("2", "NL| VIAPLAY F1 4K"),
-    ("3", "UK| SKY SPORTS F1 UHD"), ("3", "UK| SKY SPORTS F1 HD"), ("3", "UK| NFL REDZONE"), ("3", "UK| SKY SPORTS DARTS"),
+    ("2", "NL| SPORT 1 FHD"), ("2", "NL| SPORT 2 HD"), ("2", "NL| SPORT EXTRA 4K"), ("2", "NL| SPORT NEWS"),
+    ("3", "UK| SPORTS MAIN UHD"), ("3", "UK| SPORTS MAIN HD"), ("3", "UK| SPORTS ACTION"), ("3", "UK| SPORTS ARENA"),
     ("4", "US| CNN"), ("4", "US| ESPN"), ("5", "4K| NATURE UHD"),
 ]
 DEMO_MOVIES = [("10", "EN - The Long Night (2024)", "7.9"), ("10", "EN - Harbour Lights (2023)", "6.8"), ("11", "4K - Northern Sky (2025)", "8.1"),
