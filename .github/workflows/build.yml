@@ -1,0 +1,86 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tv:
+    name: Samsung TV (.wgt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Channel grouping matches the Mac app
+        run: python3 tv/test/test_groups_parity.py
+      - name: JavaScript parses as ES2017 (Samsung 2018 TVs)
+        run: for f in tv/app/js/*.js; do case "$f" in *hls.min.js) continue;; esac; npx -y acorn@8.14.0 --ecma2017 --silent "$f" > /dev/null || exit 1; done
+      - name: Package
+        run: python3 tv/tools/build_wgt.py
+      - uses: actions/upload-artifact@v4
+        with: { name: Beeldbuis-samsung-unsigned, path: dist/Beeldbuis.wgt }
+
+  android:
+    name: Android TV + phone (.apk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.14.3" }
+      - name: Build
+        env:
+          BB_VERSION_CODE: ${{ github.run_number }}
+          BB_VERSION_NAME: ${{ github.run_number }}
+          KEYSTORE_B64: ${{ secrets.BB_KEYSTORE_BASE64 }}
+          BB_KEYSTORE_PASSWORD: ${{ secrets.BB_KEYSTORE_PASSWORD }}
+        run: |
+          export BB_VERSION_NAME="$(cat VERSION)"
+          # With the signing secrets every build has the same key, so updates install over the old app.
+          if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/bb.jks"; export BB_KEYSTORE="$RUNNER_TEMP/bb.jks"; fi
+          gradle -p android assembleRelease --no-daemon
+          mkdir -p dist && cp android/app/build/outputs/apk/release/app-release.apk dist/Beeldbuis.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: Beeldbuis-android, path: dist/Beeldbuis.apk }
+
+  mac:
+    name: Mac update package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          python3 mac/build.py
+          mkdir -p "dist/Beeldbuis update"
+          cp mac/pkg/iptv.py "dist/Beeldbuis update/"
+          cp -r mac/assets "dist/Beeldbuis update/"
+          cp "mac/Update Beeldbuis.command" "dist/Beeldbuis update/"
+          chmod +x "dist/Beeldbuis update/Update Beeldbuis.command"
+          cd dist && zip -qr Beeldbuis-mac-update.zip "Beeldbuis update"
+      - uses: actions/upload-artifact@v4
+        with: { name: Beeldbuis-mac-update, path: dist/Beeldbuis-mac-update.zip }
+
+  release:
+    # A new number in VERSION on main publishes a release vX.Y.Z with all three downloads.
+    name: Publish release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [tv, android, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          V="v$(cat VERSION)"
+          if gh release view "$V" --repo "${{ github.repository }}" > /dev/null 2>&1; then echo "$V already released"; exit 0; fi
+          gh release create "$V" dist/* --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Beeldbuis $V" --generate-notes
