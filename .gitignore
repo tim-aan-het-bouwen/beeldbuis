@@ -17,3 +17,12 @@ __pycache__/
 node_modules/
 android/signing/
 *.jks
+# personal taste profiles, Letterboxd exports and local test configs/data
+smaak.json
+letterboxd*.zip
+mac/test/vod/
+mac/test/cfg*/
+mac/test/*.png
+mac/test/*.log
+mac/test/*.bin
+mac/test/*.json

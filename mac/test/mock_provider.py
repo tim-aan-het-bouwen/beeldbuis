@@ -5,7 +5,7 @@ import hashlib, json, os, re, subprocess, sys, urllib.request, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REAL = os.environ.get("BEELDBUIS_UPSTREAM", "").rstrip("/")  # real Xtream server for metadata, e.g. https://example.org
+REAL = os.environ.get("BEELDBUIS_UPSTREAM", "").rstrip("/")   # your own Xtream server, only needed to (re)fill the cache
 CACHE = os.path.join(HERE, "mockcache")
 MEDIA = os.path.join(HERE, "media", "movie.mkv")
 XMLTV = os.path.join(HERE, "xmltv.raw")
@@ -45,7 +45,11 @@ class H(BaseHTTPRequestHandler):
         action = q.get("action", [""])[0]
         key = hashlib.md5(query.encode()).hexdigest()
         fp = os.path.join(CACHE, key + ".json")
-        if os.path.exists(fp):
+        full = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vod", action + ".json")
+        if action in ("get_vod_streams", "get_series", "get_vod_categories", "get_series_categories") and not q.get("category_id") \
+                and os.path.exists(full) and not os.environ.get("MOCK_SMALL"):
+            data = open(full, "rb").read()   # the full real catalogue (downloaded once); MOCK_SMALL=1 for the 300-item cache
+        elif os.path.exists(fp):
             data = open(fp, "rb").read()
         else:
             req = urllib.request.Request(REAL + "/player_api.php?" + query, headers={"User-Agent": "Mozilla/5.0"})
