@@ -2,7 +2,12 @@
 # Beeldbuis update: place the new iptv.py + assets, restart the background service,
 # check that the NEW version is running, and keep this window open with a clear result.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-APPDIR="$HOME/Library/Application Support/IPTVPlayer"
+# The app folder: a fresh install uses "Beeldbuis"; older installs keep their original "IPTVPlayer" folder.
+APPDIR="$HOME/Library/Application Support/Beeldbuis"
+if [ ! -d "$APPDIR" ] && [ -d "$HOME/Library/Application Support/IPTVPlayer" ]; then APPDIR="$HOME/Library/Application Support/IPTVPlayer"; fi
+# The launchd job that runs it: whichever LaunchAgent points at this iptv.py (default label for new installs).
+LABEL="$(grep -l "iptv.py" "$HOME/Library/LaunchAgents/"*.plist 2>/dev/null | head -1 | xargs -I{} basename {} .plist)"
+[ -n "$LABEL" ] || LABEL="app.beeldbuis.server"
 LOG="$APPDIR/update.log"
 PORT=8765
 
@@ -31,7 +36,7 @@ echo "  Beeldbuis wordt bijgewerkt..."
 echo
 
 if [ ! -f "$APPDIR/iptv.py" ]; then
-  echo "  Beeldbuis is nog niet geinstalleerd op deze Mac."
+  echo "  Beeldbuis is nog niet geinstalleerd op deze Mac. Gebruik eerst 'Installeer Beeldbuis.command'."
   finish 1
 fi
 
@@ -56,6 +61,8 @@ echo "  [ok] Bestanden geplaatst"
 # Personal files from the work folder (the folder that holds the "Beeldbuis update N" folders):
 # sleutels.txt (API keys), smaak.json (taste profiles, shipped in this package) and the newest Letterboxd export.
 WORK="$(dirname "$HERE")"
+case "$(basename "$WORK")" in updates|Updates) WORK="$(dirname "$WORK")";; esac   # packages may live in an "updates" subfolder
+[ -f "$HERE/sleutels.txt" ] && WORK="$HERE"                                         # or the files sit next to this script
 CONF="$APPDIR"
 mkdir -p "$CONF"
 if [ -f "$WORK/sleutels.txt" ]; then
@@ -72,7 +79,7 @@ if [ -n "$LBZIP" ]; then
 fi
 
 restart() {
-  launchctl kickstart -k "gui/$(id -u)/nl.tim.iptvplayer" 2>/dev/null || { pkill -f "iptv.py"; sleep 2; }
+  launchctl kickstart -k "gui/$(id -u)/$LABEL" 2>/dev/null || { pkill -f "iptv.py"; sleep 2; }
   for i in $(seq 1 60); do
     [ "$(running_version)" = "$1" ] && return 0
     sleep 0.25

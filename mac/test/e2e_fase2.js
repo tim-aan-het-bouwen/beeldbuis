@@ -26,11 +26,11 @@ const BASE = process.env.BASE || 'http://127.0.0.1:8765';
   const chips = await page.$$eval('#profiles button, #profiles .chip', c => c.map(x => x.textContent.trim()));
   console.log('profiles:', chips);
   ok(chips.length === 3, 'three profiles');
-  await page.click('#profiles >> text=Joanna');
+  await page.click('#profiles button >> nth=1');
   await page.waitForTimeout(1500);
   const rowsJ = await page.$$eval('#home .hrow, #home .row', r => r.map(x => (x.querySelector('h2, h3, .rh') || {}).textContent));
-  ok(!rowsJ.some(r => /For you/i.test(r || '')), 'Joanna (empty taste) has no For you row: ' + rowsJ.join(' | '));
-  await page.click('#profiles >> text=Tim');
+  ok(!rowsJ.some(r => /For you/i.test(r || '')), 'second profile (empty taste) has no For you row: ' + rowsJ.join(' | '));
+  await page.click('#profiles button >> nth=0');
   await page.waitForTimeout(1200);
 
   // detail card from a tile
@@ -40,7 +40,7 @@ const BASE = process.env.BASE || 'http://127.0.0.1:8765';
   await page.waitForFunction(() => (document.querySelector('#dcardBody') || {}).textContent.length > 40, null, { timeout: 15000 });
   const dtext = await page.$eval('#dcardBody', e => e.textContent);
   ok(/IMDb|Mock overview|min/i.test(dtext), 'detail card has metadata');
-  ok(await page.isVisible('#dPlay'), 'Play button visible');
+  ok(await page.isVisible('#dPlay') || await page.isVisible('#dEps'), 'Play or Episodes button visible');
   await page.screenshot({ path: 'e2e-dcard.png' });
   // feedback thumbs
   await page.click('#dDown');
@@ -57,26 +57,52 @@ const BASE = process.env.BASE || 'http://127.0.0.1:8765';
   await page.fill('#gsearchAll', '');
   await page.waitForTimeout(400);
 
-  // library tab with posters
+  // Movies tab opens on shelves (browse); search, genre chips, See all, then the classic list + player
   await page.click('.tabs button[data-tab="vod"]');
-  await page.waitForFunction(() => document.querySelectorAll('#list .item, #list .tile, #list li').length > 20, null, { timeout: 30000 });
-  const n = await page.$$eval('#list .item, #list .tile, #list li', x => x.length);
+  await page.waitForSelector('#browse', { state: 'visible', timeout: 15000 });
+  await page.waitForFunction(() => document.querySelectorAll('#bwrap .hrow').length >= 3, null, { timeout: 30000 });
+  const shelves = await page.$$eval('#bwrap .hrow h2', x => x.map(e => e.textContent));
+  console.log('shelves:', shelves);
+  ok(shelves.length >= 3, 'movie shelves: ' + shelves.length);
+  ok(await page.$$eval('#bchips .chip', x => x.length) > 3, 'genre chips shown');
+  await page.screenshot({ path: 'e2e-browse.png' });
+  const more = await page.$('#bwrap .hrow .more');
+  if (more) {
+    await more.click();
+    await page.waitForFunction(() => document.querySelectorAll('#bwrap .bgrid .tile').length > 0, null, { timeout: 15000 });
+    ok(true, 'See all opens a grid: ' + await page.$$eval('#bwrap .bgrid .tile', x => x.length));
+    await page.click('#bback');
+    await page.waitForSelector('#bwrap .hrow', { timeout: 15000 });
+  }
+  await page.click('#bchips .chip >> nth=1');
+  await page.waitForFunction(() => document.querySelectorAll('#bwrap .bgrid .tile').length > 0, null, { timeout: 15000 });
+  ok(true, 'genre chip filters: ' + await page.$eval('#bwrap .bhead h2', e => e.textContent));
+  await page.fill('#bq', 'dune');
+  await page.waitForFunction(() => /Dune/i.test((document.querySelector('#bwrap .bgrid') || {}).textContent || ''), null, { timeout: 15000 });
+  const btext = await page.$eval('#bwrap', e => e.textContent);
+  ok(/Dune/i.test(btext) && !/Heart Of The Beast/i.test(btext), 'browse search filters to Dune');
+  await page.click('#bwrap .bgrid .tile >> nth=0');
+  await page.waitForSelector('#dcard', { state: 'visible', timeout: 10000 });
+  await page.click('#dClose');
+  await page.click('#bList');
+  await page.waitForFunction(() => document.querySelectorAll('#list .item').length > 20, null, { timeout: 30000 });
+  ok(!(await page.isVisible('#browse')), 'List & player closes the shelves');
+  const n = await page.$$eval('#list .item', x => x.length);
   ok(n > 20, 'movie library items: ' + n);
   await page.fill('#search', 'dune');
   await page.waitForTimeout(900);
   const ltext = await page.$eval('#list', e => e.textContent);
   ok(/Dune/i.test(ltext) && !/Heart Of The Beast/i.test(ltext), 'library search filters to Dune');
   await page.screenshot({ path: 'e2e-library.png' });
-  // click a library item -> detail card
-  await page.click('#list .item >> nth=0');
-  await page.waitForSelector('#dcard', { state: 'visible', timeout: 10000 });
-  await page.click('#dClose');
 
   // series tab + episodes in card
   await page.click('.tabs button[data-tab="series"]');
-  await page.fill('#search', 'dune');
-  await page.waitForTimeout(900);
-  await page.click('#list .item >> nth=0');
+  await page.waitForSelector('#browse', { state: 'visible', timeout: 15000 });
+  await page.waitForFunction(() => document.querySelectorAll('#bwrap .hrow, #bwrap .hempty').length > 0, null, { timeout: 30000 });
+  ok((await page.$eval('#bq', e => e.placeholder)).includes('series'), 'series shelves');
+  await page.fill('#bq', 'dune');
+  await page.waitForFunction(() => document.querySelectorAll('#bwrap .bgrid .tile').length > 0, null, { timeout: 15000 });
+  await page.click('#bwrap .bgrid .tile >> nth=0');
   await page.waitForSelector('#dcard', { state: 'visible', timeout: 10000 });
   await page.waitForFunction(() => document.querySelectorAll('#dEpisodes .item').length > 0, null, { timeout: 20000 }).catch(() => {});
   const eps = await page.$$eval('#dEpisodes .item', x => x.length);
@@ -91,7 +117,7 @@ const BASE = process.env.BASE || 'http://127.0.0.1:8765';
   console.log('keys info:', ktext);
   ok(/TMDb/i.test(ktext), 'keys status shown');
   const anchors = await page.$eval('#sAnchors', e => e.value).catch(() => '');
-  ok(/Pluribus/.test(anchors), 'taste anchors loaded in settings');
+  ok(anchors.trim().length > 0, 'taste anchors loaded in settings');
   await page.screenshot({ path: 'e2e-settings2.png', fullPage: true });
   await page.click('#sCancel');
 

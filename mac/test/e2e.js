@@ -24,11 +24,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.evaluate(() => { const s = document.querySelector('#seekBar'); s.value = 1290; s.onchange(); }); await sleep(8000);
   console.log('after seek 21:30 (should snap to 21:00 -> start 19-36, offset 1260)', await vstate(), 'seekBar', await p.evaluate(() => document.querySelector('#seekBar').value), 'mock:', fs.readFileSync('mock.log','utf8').split('\n').filter(l => /timeshift start/.test(l)).pop());
   console.log('== MOVIE with subtitles'); await p.click('.tabs button[data-tab="vod"]'); await sleep(3000);
-  await p.click('#list .item:nth-child(2)'); await sleep(10000); console.log(await vstate());
+  await p.click('#bList'); await sleep(500);   // Movies opens on shelves; the list sits behind them
+  await p.click('#list .item:nth-child(2)'); await sleep(1500);
+  if (await p.isVisible('#dPlay')) await p.click('#dPlay');   // since update 8 a movie opens its detail card first
+  await sleep(10000); console.log(await vstate());
   console.log('subtitle tracks', await p.evaluate(() => [...document.querySelector('#video').textTracks].map(t => t.kind + ':' + t.language + ':' + t.mode + ':' + (t.activeCues ? t.activeCues.length : -1))));
   await p.screenshot({ path: 'e2e-movie.png' });
   await sleep(12000); await p.click('.tabs button[data-tab="live"]'); await sleep(2500);
-  await p.click('.tabs button[data-tab="vod"]'); await sleep(2500); await p.screenshot({ path: 'e2e-continue.png' });
+  await p.click('.tabs button[data-tab="vod"]'); await sleep(2500); await p.click('#bList'); await sleep(500); await p.screenshot({ path: 'e2e-continue.png' });
   console.log('continue rows', await p.evaluate(() => [...document.querySelectorAll('#list .rsec')].map(e => e.textContent)), await p.evaluate(() => document.querySelector('#list .item .sub')?.textContent));
   console.log('== RECORDING'); await p.click('.tabs button[data-tab="live"]'); await sleep(2000);
   await p.selectOption('#cat', val); await sleep(1500); await p.click('#list .item:nth-child(1)'); await sleep(8000); console.log('live again', await vstate());
