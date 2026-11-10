@@ -19,7 +19,7 @@
   function registerKeys() {
     if (!isTizen) return;
     var want = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind',
-      'ChannelUp', 'ChannelDown', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue', 'Info',
+      'ChannelUp', 'ChannelDown', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue', 'Info', 'Guide',
       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
     want.forEach(function (k) { try { root.tizen.tvinputdevice.registerKey(k); } catch (e) { /* key not on this model */ } });
   }

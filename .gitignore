@@ -26,3 +26,6 @@ mac/test/*.png
 mac/test/*.log
 mac/test/*.bin
 mac/test/*.json
+# words only you know (provider host, names): local only
+mac/test/private-words.txt
+mac/test/fakecache/

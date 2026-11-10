@@ -62,7 +62,7 @@
       var cid = String(s.category_id), cn = cleanName(name), disp = cn[0] || name, q = cn[1] || catq[cid] || '';
       var country = catc[cid] || 'OTHER', key = country + ':' + disp.toUpperCase().replace(/[^A-Z0-9]/g, '');
       var arch = String(s.tv_archive) === '1' ? (parseInt(s.tv_archive_duration, 10) || 0) : 0;
-      var v = { id: parseInt(s.stream_id, 10), q: q, rank: RANK[q] !== undefined ? RANK[q] : 2, cat: cid, name: name, archive: arch, _i: n++ };
+      var v = { id: parseInt(s.stream_id, 10), q: q, rank: RANK[q] !== undefined ? RANK[q] : 2, cat: cid, name: name, archive: arch, epg: s.epg_channel_id || '', _i: n++ };
       var g = groups[key];
       if (!g) {
         g = groups[key] = { key: key, name: disp, icon: s.stream_icon || '', epg: s.epg_channel_id || '', cats: [cid], variants: [v], country: country, _names: [disp] };

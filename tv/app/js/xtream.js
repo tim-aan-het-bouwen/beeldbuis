@@ -6,6 +6,9 @@
 
   function acct() { var a = S.get().account; if (!a) throw new Error('Not signed in'); return a; }
   function base(a) { return a.server.replace(/\/+$/, ''); }
+  // Streams: the TV's player (AVPlay on 2018 Samsungs) can't open https links signed by newer certificate chains,
+  // and Xtream providers redirect every stream to plain http anyway, so on the TV streams start on http.
+  function streamBase(a) { var b = base(a); return P.isTizen && /^https:\/\//i.test(b) && !a.httpsStreams ? b.replace(/^https:/i, 'http:') : b; }
 
   function normalizeServer(s) {
     s = String(s || '').trim();
@@ -100,7 +103,7 @@
       return api('get_vod_streams', { category_id: catId }).then(function (r) {
         return list(r).map(function (s) {
           return { id: s.stream_id, name: s.name, icon: s.stream_icon || '', rating: s.rating || '', added: parseInt(s.added, 10) || 0,
-            ext: s.container_extension || 'mp4' };
+            ext: s.container_extension || 'mp4', cat: String(catId) };
         });
       });
     });
@@ -110,7 +113,7 @@
       return api('get_series', { category_id: catId }).then(function (r) {
         return list(r).map(function (s) {
           return { id: s.series_id, name: s.name, icon: s.cover || '', rating: s.rating || '', plot: s.plot || '', genre: s.genre || '',
-            year: (s.releaseDate || s.release_date || '').slice(0, 4) };
+            year: (s.releaseDate || s.release_date || '').slice(0, 4), added: parseInt(s.last_modified, 10) || 0, cat: String(catId) };
         });
       });
     });
@@ -131,12 +134,28 @@
   // Samsung's player wants the raw MPEG-TS; browsers need HLS.
   function liveUrl(id) {
     var a = acct(), ext = P.name === 'browser' ? 'm3u8' : 'ts';
-    return base(a) + '/live/' + encodeURIComponent(a.username) + '/' + encodeURIComponent(a.password) + '/' + id + '.' + ext;
+    return streamBase(a) + '/live/' + encodeURIComponent(a.username) + '/' + encodeURIComponent(a.password) + '/' + id + '.' + ext;
   }
-  function vodUrl(id, ext) { var a = acct(); return base(a) + '/movie/' + encodeURIComponent(a.username) + '/' + encodeURIComponent(a.password) + '/' + id + '.' + (ext || 'mp4'); }
-  function episodeUrl(id, ext) { var a = acct(); return base(a) + '/series/' + encodeURIComponent(a.username) + '/' + encodeURIComponent(a.password) + '/' + id + '.' + (ext || 'mp4'); }
+  // Catch-up (timeshift). The provider counts in Dutch time (CET/CEST), whatever its server_info says, so the start
+  // minute is written in Europe/Amsterdam time (EU rule: summer time from the last Sunday of March to the last Sunday
+  // of October, 01:00 UTC). Done by hand because older TV browsers lack time-zone data.
+  function lastSunday(y, m) { var d = new Date(Date.UTC(y, m + 1, 0, 1)); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d.getTime(); }
+  function amsterdam(ts) {
+    var ms = ts * 1000, y = new Date(ms).getUTCFullYear();
+    var off = ms >= lastSunday(y, 2) && ms < lastSunday(y, 9) ? 2 : 1;
+    var d = new Date(ms + off * 3600000);
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) + ':' + p(d.getUTCHours()) + '-' + p(d.getUTCMinutes());
+  }
+  function timeshiftUrl(id, start, minutes) {
+    var a = acct();
+    start = Math.floor(start / 60) * 60;
+    return streamBase(a) + '/timeshift/' + encodeURIComponent(a.username) + '/' + encodeURIComponent(a.password) + '/' + Math.max(1, Math.ceil(minutes)) + '/' + amsterdam(start) + '/' + id + '.ts';
+  }
+  function vodUrl(id, ext) { var a = acct(); return streamBase(a) + '/movie/' + encodeURIComponent(a.username) + '/' + encodeURIComponent(a.password) + '/' + id + '.' + (ext || 'mp4'); }
+  function episodeUrl(id, ext) { var a = acct(); return streamBase(a) + '/series/' + encodeURIComponent(a.username) + '/' + encodeURIComponent(a.password) + '/' + id + '.' + (ext || 'mp4'); }
 
   root.BBXtream = { isAdult: isAdult, normalizeServer: normalizeServer, login: login, connections: connections, liveCategories: liveCategories,
     vodCategories: vodCategories, seriesCategories: seriesCategories, liveStreams: liveStreams, vodStreams: vodStreams,
-    series: series, seriesInfo: seriesInfo, vodInfo: vodInfo, shortEpg: shortEpg, liveUrl: liveUrl, vodUrl: vodUrl, episodeUrl: episodeUrl };
+    series: series, seriesInfo: seriesInfo, vodInfo: vodInfo, shortEpg: shortEpg, liveUrl: liveUrl, timeshiftUrl: timeshiftUrl, amsterdam: amsterdam, vodUrl: vodUrl, episodeUrl: episodeUrl };
 })(this);

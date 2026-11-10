@@ -11,7 +11,12 @@
     lastChannel: null,
     englishSubs: true,
     showAdult: false,
-    quality: 'fhd'            // 'fhd' = Full HD first, 'best' = 4K first
+    quality: 'fhd',           // 'fhd' = Full HD first, 'best' = 4K first
+    profile: 'p1',            // who is watching; favorites/recent/positions above belong to this profile
+    omdbKey: '',              // optional free OMDb key for IMDb/RT ratings, typed in on the device
+    omdbBase: '',             // tests only: a fake OMDb
+    mac: null,                // optional link with Beeldbuis on a Mac: {base, key, name}
+    profiles: null            // {p1: {name, favorites, recent, positions}, ...}; names are set on the device
   };
   var state = null;
 
@@ -21,6 +26,26 @@
     state = {};
     Object.keys(DEFAULTS).forEach(function (k) { state[k] = (k in s) ? s[k] : JSON.parse(JSON.stringify(DEFAULTS[k])); });
     return state;
+  }
+  var PROFILE_IDS = ['p1', 'p2', 'both'];
+  var PROFILE_DEFAULT = { p1: 'Profile 1', p2: 'Profile 2', both: 'Together' };
+  var PERSONAL = ['favorites', 'recent', 'positions'];
+  function profiles() {
+    var s = get();
+    if (!s.profiles) {          // first run of a version with profiles: what was there belongs to profile 1
+      s.profiles = {};
+      PROFILE_IDS.forEach(function (id) { s.profiles[id] = { name: PROFILE_DEFAULT[id], favorites: [], recent: [], positions: {} }; });
+    }
+    return s.profiles;
+  }
+  function profileName(id) { var p = profiles()[id || get().profile]; return (p && p.name) || PROFILE_DEFAULT[id || get().profile]; }
+  function setProfileName(id, name) { profiles()[id].name = String(name || '').trim().slice(0, 20) || PROFILE_DEFAULT[id]; save(); }
+  function switchProfile(id) {
+    var s = get(), ps = profiles();
+    if (!ps[id] || id === s.profile) return;
+    PERSONAL.forEach(function (k) { ps[s.profile][k] = s[k]; s[k] = ps[id][k] || (k === 'positions' ? {} : []); ps[id][k] = null; });
+    s.profile = id;
+    save();
   }
   function save() { try { root.localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
   function get() { return state || load(); }
@@ -67,5 +92,6 @@
   }
 
   root.BBStore = { get: get, save: save, load: load, toggleFav: toggleFav, isFav: isFav, addRecent: addRecent, setPosition: setPosition,
-    cacheGet: cacheGet, cacheSet: cacheSet, cacheClear: cacheClear };
+    cacheGet: cacheGet, cacheSet: cacheSet, cacheClear: cacheClear,
+    PROFILE_IDS: PROFILE_IDS, profiles: profiles, profileName: profileName, setProfileName: setProfileName, switchProfile: switchProfile };
 })(this);
