@@ -15,6 +15,8 @@
     profile: 'p1',            // who is watching; favorites/recent/positions above belong to this profile
     omdbKey: '',              // optional free OMDb key for IMDb/RT ratings, typed in on the device
     omdbBase: '',             // tests only: a fake OMDb
+    startScreen: 'calm',      // 'calm' = clock, consoles and apps first; 'tonight' = straight to Tonight
+    saverMin: 5,              // screensaver after this many quiet minutes; 0 = off
     mac: null,                // optional link with Beeldbuis on a Mac: {base, key, name}
     profiles: null            // {p1: {name, favorites, recent, positions}, ...}; names are set on the device
   };

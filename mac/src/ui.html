@@ -847,6 +847,14 @@ body.mini.mini-t #toasts{bottom:16px}
       <div id="sTvInputs"></div>
       <p><button class="btn small" id="sTvInAdd">+ Add input</button></p>
       <div id="sSiri"></div>
+      <h3>Calm home screen and screensaver on the TV <span class="hint">Beeldbuis TV app 0.9.5 or newer</span></h3>
+      <label>Weather for <span class="hint">(a town or city; empty = no weather)</span></label>
+      <input id="sWeather" placeholder="for example Utrecht" autocomplete="off">
+      <div class="maconly">
+      <label>Photo folder for the screensaver <span class="hint">(a folder on this Mac; empty = film and series art only)</span></label>
+      <div style="display:flex;gap:8px"><input id="sSaverDir" placeholder="~/Pictures/TV" style="flex:1"><button class="btn small" id="sSaverChoose">Choose…</button></div>
+      <p class="hint" id="sSaverInfo"></p>
+      </div>
       <div id="sTvSec" class="maconly">
       <h3>TV playlist <span class="hint">Samsung · SmartOne IPTV</span></h3>
       <p class="hint">A cleaned-up playlist for the TV, made from exactly these settings: only the categories ticked above, your favourites on top, one stream per channel. Saved in a Dropbox folder so the TV always loads the latest version.</p>
@@ -919,7 +927,10 @@ body.mini.mini-t #toasts{bottom:16px}
     <div class="rmt">
       <div class="st" id="rmtSt">…</div>
       <div class="grp" id="rmtScenes"></div>
-      <div class="grp"><button class="btn" id="rmtCompanion">⚽ Second screen</button></div>
+      <div class="grp"><button class="btn" id="rmtCompanion">⚽ Second screen</button><button class="btn" id="rmtPanel" title="Scores and line-ups next to the picture on the TV">📊 Match data on TV</button></div>
+      <div class="lbl">Type on the TV</div>
+      <div class="grp"><input id="rmtText" placeholder="Search text for the TV…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" style="flex:1 1 140px;min-width:0"><button class="btn" id="rmtTextGo">Done ⏎</button></div>
+      <div class="st" id="rmtTextSt">Works in Beeldbuis on the TV, and in other TV apps while the TV's keyboard is on screen.</div>
       <div class="grp"><button class="btn" data-r="power">⏻ TV on/off</button><button class="btn" data-r="stop">■ Stop on TV</button></div>
       <div class="grp"><button class="btn" data-k="voldown">🔉 −</button><button class="btn" data-k="mute">🔇</button><button class="btn" data-k="volup">🔊 +</button></div>
       <div class="lbl">Inputs &amp; apps</div>
@@ -2359,6 +2370,9 @@ async function loadRemoteSettings(){
   $('#sTvIp').value = settings.tv_ip || ''; $('#sTvIp').placeholder = r.tv_ip ? 'automatic (' + r.tv_ip + ')' : 'automatic';
   $('#sTvInputs').innerHTML = '';
   (r.inputs || []).forEach(i => $('#sTvInputs').appendChild(tvInputRow(i)));
+  $('#sWeather').value = settings.weather_place || ''; $('#sSaverDir').value = settings.saver_photos || '';
+  if (!me.remote && settings.saver_photos) api('/api/tv/ambient').then(a => { $('#sSaverInfo').textContent = a.photo_error || (a.photos + ' photo' + (a.photos === 1 ? '' : 's') + ' found.'); }).catch(() => {});
+  else $('#sSaverInfo').textContent = '';
   const base = location.origin, k = devKey ? encodeURIComponent(devKey) : '';
   $('#sSiri').innerHTML = !me.remote ? '<p class="hint">Siri: open these Settings on your iPhone to get ready-made links for Shortcuts.</p>' :
     `<label>Siri &amp; Shortcuts</label><p class="hint">Make a Shortcut with one action, <b>Get contents of URL</b>, and paste one of these links. Name the Shortcut the way you want to say it (“TV on”, “PlayStation”, “NPO 1 on TV”). Siri then runs it.</p>` +
@@ -2411,6 +2425,27 @@ function openCompanion(){
 }
 function closeCompanion(){ $('#cmpModal').classList.add('hidden'); clearInterval(cmpTimer); cmpTimer = null; }
 $('#rmtCompanion').onclick = openCompanion;
+$('#rmtPanel').onclick = async () => { if (await rmtSend({ action: 'panel' }, true)) toast('📊 Match data on the TV.'); };
+// ---------- type on the TV (update 35): what you type here appears in the text field on the TV, letter by letter
+let rmtTyping = false, rmtTextWant = null;
+async function rmtText(enter){
+  rmtTextWant = { text: $('#rmtText').value, enter: !!enter };
+  if (rmtTyping) return;
+  rmtTyping = true;
+  while (rmtTextWant) {
+    const w = rmtTextWant; rmtTextWant = null;
+    try {
+      const r = await post('/api/remote/send', { action: 'text', text: w.text, enter: w.enter });
+      $('#rmtTextSt').textContent = r && r.tv_app ? 'Sent to Beeldbuis on the TV.' : r && r.tv ? 'Sent to the TV. Nothing happens? Open a search field on the TV first.' : 'The TV did not take it.';
+      if (w.enter) { $('#rmtText').value = ''; rmtTextWant = null; }
+    } catch (e) { $('#rmtTextSt').textContent = e.message; }
+  }
+  rmtTyping = false;
+}
+let rmtTextT = null;
+$('#rmtText').oninput = () => { clearTimeout(rmtTextT); rmtTextT = setTimeout(() => rmtText(false), 350); };
+$('#rmtText').onkeydown = e => { if (e.key === 'Enter') { clearTimeout(rmtTextT); rmtText(true); } };
+$('#rmtTextGo').onclick = () => { clearTimeout(rmtTextT); rmtText(true); };
 $('#cmpClose').onclick = closeCompanion;
 $('#cmpScores').onchange = cmpLoad;
 
@@ -2648,6 +2683,12 @@ async function loadTv(){
 function tvFields(){
   return { tv_dir: $('#sTvDir').value.trim(), tv_quality: $('#sTvQuality').value, tv_auto: $('#sTvAuto').checked };
 }
+$('#sSaverChoose').onclick = async () => {
+  const b = $('#sSaverChoose'); b.disabled = true; b.textContent = 'Look for the window…';
+  try { const r = await post('/api/saver/choose-folder'); if (r && r.path) $('#sSaverDir').value = r.path; }
+  catch (e) { toast(esc(e.message), 'warn'); }
+  b.disabled = false; b.textContent = 'Choose…';
+};
 $('#sTvChoose').onclick = async () => {
   const b = $('#sTvChoose'); b.disabled = true; b.textContent = 'Look for the window…';
   try { const r = await post('/api/tv/choose-folder'); if (r && r.path) $('#sTvDir').value = r.path; }
@@ -2683,6 +2724,8 @@ $('#sSave').onclick = async () => {
   settings.hidden_cats = [...$('#sCats').querySelectorAll('.cats input')].filter(i => !i.checked).map(i => i.dataset.id);
   if (!me.remote) { Object.assign(settings, tvFields()); settings.phone = $('#sPhone').checked; }
   settings.tv_inputs = tvInputs(); settings.tv_ip = $('#sTvIp').value.trim();
+  settings.weather_place = $('#sWeather').value.trim();
+  if (!me.remote) settings.saver_photos = $('#sSaverDir').value.trim();
   if (!me.remote) { settings.whisper_recordings = $('#sWhRec').checked; settings.dlna = $('#sDlna').checked; }
   try { await saveTaste(); } catch (e) { toast(esc(e.message), 'warn'); }
   await post('/api/settings', settings);

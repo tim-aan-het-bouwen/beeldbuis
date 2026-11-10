@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var P = root.BBPlatform, S = root.BBStore, X = root.BBXtream, PL = root.BBPlayer, N = root.BBNav, G = root.BBGroups, SR = root.BBSearch, OM = root.BBOmdb, MAC = root.BBMac;
-  var VERSION = '0.9.2';
+  var VERSION = '0.9.5';
   var $ = function (sel) { return document.querySelector(sel); };
   var screen = $('#screen');
 
@@ -34,7 +34,11 @@
     view.tab = tab;
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
   }
-  function clock() { var d = new Date(); $('#clock').textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function clock() {
+    var d = new Date(), t = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    $('#clock').textContent = t;
+    if ($('#calmClock')) { $('#calmClock').textContent = t; $('#calmDate').textContent = longDate(d); }
+  }
 
   function modal(html, onBack) {
     closeModal();
@@ -172,7 +176,7 @@
     Array.prototype.forEach.call(screen.querySelectorAll('.prof'), function (b) {
       b.onclick = function () { S.switchProfile(b.getAttribute('data-p')); showHome(); N.focus(screen.querySelector('.prof.on')); toast('Watching as ' + S.profileName()); };
     });
-    view.back = confirmExit;
+    view.back = S.get().startScreen === 'calm' ? showCalm : confirmExit;
     N.first(screen.querySelector('.home .tile') ? screen.querySelector('.home .row') : $('#tabs'));
     // the rows below need the provider; they appear when ready
     homeNow('#rowOnNow', favLive.map(function (f) { return f.group; }), gen);
@@ -506,7 +510,16 @@
   // ---------- commands from the phone or the Mac ("Play on TV") ----------
   function onRemote(c) {
     if (!c || !c.action) return;
+    saverStop(); saverArm();
+    if (c.action === 'text') return remoteText(c);
+    if (c.action === 'panel') { if ($('#modal')) closeModal(); return sideCycle(); }
     if ($('#modal')) closeModal();
+    if (c.action === 'play' && c.name === 'Beeldbuis self-test' && root.BBDiag) {   // diagnosis from the Mac (0.9.3)
+      if (play) stopPlayback();
+      toast('Player self-test running (about 3 minutes)…', 8000);
+      root.BBDiag.run({ live: c.kind === 'live' ? c.id : null, episode: c.kind === 'episode' ? c.id : null, ext: c.ext });
+      return;
+    }
     if (c.action === 'play') {
       var from = c.from ? ' from ' + esc(c.from) : '';
       if (c.kind === 'live') {
@@ -1712,6 +1725,8 @@
   }
 
   // ---------- settings ----------
+  function startLabel() { return S.get().startScreen === 'calm' ? 'Calm home (clock, consoles and apps)' : 'Tonight'; }
+  function saverLabel() { var m = saverMinutes(); return m ? 'After ' + m + ' minutes · your photos and tonight\'s picks' : 'Off'; }
   function showSettings() {
     showTop(true); setTab('settings');
     var s = S.get();
@@ -1722,6 +1737,8 @@
       '<button class="f setting" id="stQuality"><b>Picture quality</b><span>' + (s.quality === 'best' ? 'Best available (4K first)' : 'Full HD first (steadier)') + '</span></button>' +
       '<button class="f setting" id="stAdult"><b>Adult categories</b><span>' + (s.showAdult ? 'Shown' : 'Hidden') + '</span></button>' +
       '<button class="f setting" id="stProfiles"><b>Profiles</b><span>' + S.PROFILE_IDS.map(function (id) { return esc(S.profileName(id)); }).join(', ') + '</span></button>' +
+      '<button class="f setting" id="stStart"><b>Start screen</b><span>' + startLabel() + '</span></button>' +
+      '<button class="f setting" id="stSaver"><b>Screensaver</b><span>' + saverLabel() + '</span></button>' +
       '<button class="f setting" id="stMac"><b>Beeldbuis on your Mac</b><span>' + (s.mac ? 'Linked · ' + esc(s.mac.base.replace(/^https?:\/\//, '')) : 'Not linked · For you, Letterboxd and genres') + '</span></button>' +
       '<button class="f setting" id="stOmdb"><b>IMDb ratings</b><span>' + (s.omdbKey ? 'On (OMDb key set)' : 'Off · add a free OMDb key') + '</span></button>' +
       '<button class="f setting" id="stRefresh"><b>Refresh lists</b><span>Fetch channels, movies and series again</span></button>' +
@@ -1731,6 +1748,8 @@
     $('#stCountries').onclick = function () { showCountries(false); };
     $('#stSubs').onclick = function () { s.englishSubs = !s.englishSubs; S.save(); $('#stSubs span').textContent = s.englishSubs ? 'On' : 'Off'; };
     $('#stSubStyle').onclick = showSubMenu;
+    $('#stStart').onclick = function () { s.startScreen = s.startScreen === 'calm' ? 'tonight' : 'calm'; S.save(); $('#stStart span').textContent = startLabel(); };
+    $('#stSaver').onclick = function () { var o = [0, 2, 5, 10, 20], i = o.indexOf(saverMinutes()); s.saverMin = o[(i + 1) % o.length]; S.save(); $('#stSaver span').textContent = saverLabel(); saverArm(); };
     $('#stQuality').onclick = function () { s.quality = s.quality === 'best' ? 'fhd' : 'best'; S.save(); $('#stQuality span').textContent = s.quality === 'best' ? 'Best available (4K first)' : 'Full HD first (steadier)'; };
     $('#stAdult').onclick = function () { s.showAdult = !s.showAdult; S.save(); SR.reset(); live.catId = null; vod.catId = null; $('#stAdult span').textContent = s.showAdult ? 'Shown' : 'Hidden'; };
     $('#stProfiles').onclick = function () {
@@ -1802,6 +1821,8 @@
   function stopPlayback() {
     if (!play) return;
     if (play.mode === 'mac' || play.mode === 'macvod') macStop();
+    if (side.on) sideSet(0, true);
+    side.data = null; clearTimeout(okHold.timer); okHold.down = 0;
     clearTimeout(play.seekTimer); clearTimeout(play.subTimer); clearTimeout(play.watch);
     savePos();
     clearInterval(saveTimer);
@@ -1860,6 +1881,7 @@
       play.list = list; play.index = index; play.variant = variantIdx; play.group = g;
       play.mode = mode; play.sid = sid || null; play.behind = 0; play.pausedAt = 0;
       osdLive();
+      if (side.on) { side.data = null; sideSet(side.on, true); } else if (!opts.catchup) sideOffer(play);
       if (MAC.link() && !playLive.hinted) { playLive.hinted = true; setTimeout(function () { toast('<b>OK</b> pause · <b>◀</b> 15 s back · <b>▶</b> 30 s on · <b class="k-blue">Blue</b> from the start · <b class="k-red">Red</b> records on your Mac', 6000); }, 2500); }
     }
     if (opts.catchup) {                    // a programme from the guide that is on now or already over: the provider's catch-up
@@ -1911,6 +1933,7 @@
   function liveOsd() {
     if (!play || !play.live || play.item.type === 'rec') return;
     var b = liveBehind(), paused = !!play.pausedAt;
+    if (side.on && side.data && (b > 45 || play.mode === 'cu' || paused) !== side.late) sideDraw();
     var where = b < 15 && !paused ? '● Live' : '−' + dur(b) + (play.mode === 'cu' ? ' (catch-up)' : '') + (paused ? ' · Paused' : '');
     var can = play.mode !== 'direct' || archiveVariant();
     $('#osdTime').innerHTML = esc(where) + (can ? '<span class="osd-keys">◀ 15 s back · ▶ 30 s on · OK pause' + (b >= 15 ? ' · ▶▶ back to live' : '') + ' · <b class="k-blue">Blue</b> from the start</span>' : '');
@@ -2091,16 +2114,31 @@
     };
   }
   var playVod = guarded(playVodNow), playEpisode = guarded(playEpisodeNow);
+  // Films and episodes in .mp4 often keep their index at the END of the file, and the provider answers byte-range
+  // requests with a broken header ("Accept-Ranges: 0-<size>" instead of "bytes"): the TV's player then never starts.
+  // .mkv plays straight from the provider; .mp4 goes through Beeldbuis on the Mac (/direct passes the file through
+  // with proper ranges) when the TV is linked to it.
+  function vodSrc(kind, id, ext) {
+    ext = ext || 'mp4';
+    var l = MAC.link();
+    if (l && /^(mp4|m4v|mov)$/i.test(ext))
+      return { mode: 'macdirect', url: l.base + '/direct/' + kind + '/' + encodeURIComponent(id) + '.' + ext + '?k=' + encodeURIComponent(l.key) };
+    return { mode: 'direct', url: kind === 'movie' ? X.vodUrl(id, ext) : X.episodeUrl(id, ext) };
+  }
   function playVodNow(it, start) {
     S.addRecent(stripItem(it));
-    startPlayback(X.vodUrl(it.id, it.ext), stripItem(it), { live: false, start: start });
+    var src = vodSrc('movie', it.id, it.ext);
+    startPlayback(src.url, stripItem(it), { live: false, start: start });
+    play.mode = src.mode;
     play.vod = { kind: 'movie', id: it.id, ext: it.ext || 'mp4' };
     $('#osdTitle').textContent = it.name; $('#osdSub').textContent = '▲ Subtitles';
   }
   function playEpisodeNow(ep, seriesItem, pos) {
     var start = pos ? pos.t : 0;
     S.addRecent(seriesItem || ep);
-    startPlayback(X.episodeUrl(ep.id, ep.ext), ep, { live: false, start: start });
+    var src = vodSrc('series', ep.id, ep.ext);
+    startPlayback(src.url, ep, { live: false, start: start });
+    play.mode = src.mode;
     play.vod = { kind: 'series', id: ep.id, ext: ep.ext || 'mp4' };
     $('#osdTitle').textContent = ep.name; $('#osdSub').textContent = '▲ Subtitles';
   }
@@ -2117,7 +2155,15 @@
     MAC.get('/api/play', { kind: p.vod.kind, id: p.vod.id, ext: p.vod.ext, t: Math.floor(at), native: 1 }, 45000).then(function (d) {
       if (play !== p) return;
       var l = MAC.link(), start = 0;
-      if (d && d.direct) {                    // the Mac passes the file through as it is (seekable): start where we were
+      if (d && d.fallback && !/^(mp4|m4v|mov)$/i.test(d.fallback.ext || '')) {   // another copy that the TV can open itself
+        MAC.get('/api/stop', {}, 4000).catch(function () {});
+        p.url = p.vod.kind === 'movie' ? X.vodUrl(d.fallback.id, d.fallback.ext) : X.episodeUrl(d.fallback.id, d.fallback.ext);
+        p.offset = 0; start = at;
+      } else if (d && d.fallback && d.fallback.id) {                              // another .mp4: through the Mac as well
+        MAC.get('/api/stop', {}, 4000).catch(function () {});
+        p.url = vodSrc(p.vod.kind, d.fallback.id, d.fallback.ext).url;
+        p.offset = 0; start = at;
+      } else if (d && d.direct) {                    // the Mac passes the file through as it is (seekable): start where we were
         p.url = l.base + d.direct + (d.direct.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(l.key);
         p.offset = 0; start = at;
       } else if (d && d.playlist) {           // the Mac converts it: its stream starts at the requested time
@@ -2141,7 +2187,8 @@
     p.watch = setTimeout(function () {
       if (play !== p || p.progressAt) return;
       var why = 'no picture after 30 s';
-      if (!vodViaMac(p, why)) failPlayback('This stream does not start (' + why + ').');
+      if (!vodViaMac(p, why)) failPlayback(MAC.link() || !/\.(mp4|m4v|mov)$/i.test(p.url || '') ? 'This stream does not start (' + why + ').'
+        : 'This file does not start on the TV straight from the provider. Link Beeldbuis on your Mac (Settings → Beeldbuis on your Mac) and it plays through the Mac.');
     }, 30000);
   }
   function nextEpisode() {
@@ -2221,9 +2268,300 @@
     $('#mOk').onclick = function () { closeModal(); if (p && p.returnTo.focus && document.body.contains(p.returnTo.focus)) N.focus(p.returnTo.focus); };
   }
 
+  // ======================= 0.9.5: typing from the phone, match data, calm home, screensaver =======================
+
+  // ---------- typing from the phone or the Mac: the text lands in the field that has focus, or opens Search ----------
+  function remoteText(c) {
+    var t = document.activeElement, text = String(c.text || '');
+    if (!(t && t.tagName === 'INPUT')) {
+      if (play) { toast('Typing from your phone works in Search. Stop what is playing first.', 5000); return; }
+      closeModal();
+      search.q = text; showSearch(); t = $('#sq');
+      if (!t) return;
+    }
+    t.value = text;
+    if (t.oninput) t.oninput();
+    if (c.enter) { t.blur(); if (t._done) t._done(); }
+  }
+
+  // ---------- match data next to the picture (live sport; the Mac matches the channel to live data) ----------
+  // 0 = off, 1 = spoiler-free (the match you watch live shows its score; nothing else does), 2 = every score
+  var side = { on: 0, timer: null, data: null, over: false };
+  var okHold = { down: 0, fired: false, timer: null };
+  function sideCan() { return !!(play && play.live && play.item.type !== 'rec' && MAC.link()); }
+  function sideSet(n, quiet) {
+    if (n && !sideCan()) {
+      if (!quiet) toast(MAC.link() ? 'Match data is for live TV' : 'Match data needs Beeldbuis on your Mac (Settings → Beeldbuis on your Mac)', 5000);
+      return;
+    }
+    side.on = n;
+    clearInterval(side.timer); side.timer = null;
+    var el = $('#side');
+    side.over = !PL.rect(n ? [0, 0, 1440, 810] : null);          // players that cannot shrink the picture get the panel on top
+    document.body.classList.toggle('sided', !!n && !side.over);
+    el.classList.toggle('over', !!n && side.over);
+    el.classList.toggle('hidden', !n);
+    if (!n) { el.innerHTML = ''; return; }
+    if (side.data) sideDraw(); else el.innerHTML = '<div class="sd-col"><div class="sd-none">Looking for match data…</div></div>';
+    sideLoad(); side.timer = setInterval(sideLoad, 20000);
+  }
+  function sideCycle() { sideSet((side.on + 1) % 3); }
+  function sideSid(p) { var v = p.group && order(p.group)[p.variant || 0]; return v ? v.id : ''; }
+  function sideLoad() {
+    if (!side.on || !sideCan()) return;
+    var p = play;
+    MAC.get('/api/companion', { sid: sideSid(p), kind: 'live', name: p.item.name }, 12000).then(function (d) {
+      if (play === p && side.on) { side.data = d; side.for = p.item.key; sideDraw(); }
+    }).catch(function (e) {
+      if (play === p && side.on && !side.data) $('#side').innerHTML = '<div class="sd-col"><div class="sd-none">' + errorMessage(e) + '</div></div>';
+    });
+  }
+  function sdScore(t, show) { return show ? esc(t.score == null ? '' : t.score) : '·'; }
+  function sdElsewhere(e, all) {
+    var name = e.sport === 'racing' ? e.name : (e.teams || []).map(function (t) { return t.short || t.name; }).join(' – ');
+    var sc = all && e.teams ? (e.teams || []).map(function (t) { return t.score; }).join('–') + ' · ' : '';
+    return '<span class="sd-else"><b>' + esc(name) + '</b> ' + esc(sc + (e.detail || '')) + '</span>';
+  }
+  function sideDraw() {
+    var d = side.data, el = $('#side'); if (!d || !el || !play) return;
+    var behind = liveBehind(), late = behind > 45 || play.mode === 'cu' || !!play.pausedAt;
+    var all = side.on === 2, show = all || !late;
+    side.late = late;
+    var m = d.match, c = d.context || {};
+    var h = '<div class="sd-col"><div class="sd-ctx"><b>' + esc(c.channel || title(play.item.name)) + '</b>' + (c.title ? '<span>' + esc(c.title) + '</span>' : '') + '</div>';
+    if (late && !all) h += '<div class="sd-note">You are ' + Math.max(1, Math.round(behind / 60)) + ' min behind live. Scores stay hidden.</div>';
+    if (late && all) h += '<div class="sd-note warn">These are the live scores: ahead of your picture.</div>';
+    if (!m) h += '<div class="sd-none">No live match data for this channel right now.</div>';
+    else if (m.sport === 'racing') {
+      h += '<div class="sd-lg">' + esc(m.league_name || '') + (m.session ? ' · ' + esc(m.session) : '') + (m.state === 'in' ? ' · live' : '') + '</div><div class="sd-race">' + esc(m.name || '') + '</div>';
+      if (show) h += '<div class="sd-list">' + (m.order || []).slice(0, 20).map(function (o) { return '<div><i>' + esc(o.pos == null ? '' : o.pos) + '</i>' + esc(o.name || '') + '</div>'; }).join('') + '</div>';
+      else h += '<div class="sd-none">Positions hidden.</div>';
+      if (m.next_session && m.next_session.start) h += '<div class="sd-lg">Next: ' + esc(m.next_session.name || '') + ' · ' + hhmm(Date.parse(m.next_session.start) / 1000) + '</div>';
+    } else {
+      var t = m.teams || [], a = t[0] || {}, b = t[1] || {};
+      h += '<div class="sd-lg">' + esc(m.league_name || '') + (m.state === 'in' ? ' · live' : m.state === 'pre' && m.start ? ' · ' + hhmm(Date.parse(m.start) / 1000) : '') + '</div>' +
+        '<div class="sd-teams"><div class="sd-tm">' + (a.logo ? img(a.logo) : '') + '<span>' + esc(a.short || a.name || '') + '</span></div>' +
+        '<div class="sd-sc">' + sdScore(a, show) + ' – ' + sdScore(b, show) + '</div>' +
+        '<div class="sd-tm">' + (b.logo ? img(b.logo) : '') + '<span>' + esc(b.short || b.name || '') + '</span></div></div>';
+      if (show && m.detail) h += '<div class="sd-det">' + esc(m.detail) + '</div>';
+      if (show && m.situation) h += '<div class="sd-det dim">' + esc(m.situation) + '</div>';
+      if (show && m.last_play) h += '<div class="sd-play">' + esc(m.last_play) + '</div>';
+      var ev = show ? (m.events || []) : [];
+      if (ev.length) h += '<div class="sd-list ev">' + ev.slice(-9).map(function (e) {
+        var team = t.filter(function (x) { return x.id === e.team; })[0];
+        return '<div><i>' + esc(e.min || '') + '</i>' + (e.goal ? '⚽ ' : e.red ? '🟥 ' : e.yellow ? '🟨 ' : '• ') + esc(e.who || e.type || '') + (team ? ' <u>' + esc(team.short || '') + '</u>' : '') + '</div>';
+      }).join('') + '</div>';
+      var lu = m.lineups || [];
+      if (lu.length && ev.length < 5) h += '<div class="sd-lu">' + lu.slice(0, 2).map(function (l) {
+        return '<div><b>' + esc(l.team || '') + (l.formation ? ' · ' + esc(l.formation) : '') + '</b>' + (l.players || []).slice(0, 11).map(function (p) { return '<span>' + esc(p.no || '') + ' ' + esc(p.name || '') + '</span>'; }).join('') + '</div>';
+      }).join('') + '</div>';
+    }
+    h += '</div><div class="sd-strip"><div class="sd-hint">Hold <b>OK</b>: ' + (side.on === 1 ? 'show all scores' : 'close') + '</div>';
+    var els = d.live_elsewhere || [];
+    h += els.length ? '<div class="sd-lg">Also live' + (all ? '' : ' · scores hidden') + '</div><div class="sd-elses">' + els.slice(0, 8).map(function (e) { return sdElsewhere(e, all); }).join('') + '</div>'
+      : '<div class="sd-lg">Nothing else live in your competitions right now.</div>';
+    el.innerHTML = h + '</div>';
+  }
+  // once per channel: tell the viewer when there is data for the match on screen
+  function sideOffer(p) {
+    if (!MAC.link() || side.on) return;
+    setTimeout(function () {
+      if (play !== p || side.on || !sideCan()) return;
+      MAC.get('/api/companion', { sid: sideSid(p), kind: 'live', name: p.item.name }, 12000).then(function (d) {
+        if (play !== p || side.on || !d || !d.match) return;
+        side.data = d;
+        toast('📊 Match data for this game: hold <b>OK</b>', 6000);
+      }).catch(function () {});
+    }, 12000);
+  }
+
+  // ---------- what the calm home screen and the screensaver show: weather, photos and the next recording from the Mac ----------
+  var ambient = { t: 0, amb: null, home: null, busy: null };
+  function ambientLoad(force) {
+    if (!MAC.link()) return Promise.resolve(ambient);
+    if (ambient.busy) return ambient.busy;
+    if (!force && ambient.amb && Date.now() - ambient.t < 600000) return Promise.resolve(ambient);
+    var a = MAC.get('/api/tv/ambient', {}, 12000).then(function (d) { ambient.amb = d; }, function () {});
+    var h = MAC.home(S.get().profile).then(function (d) { ambient.home = d; if (d.img_base) macImg = String(d.img_base).replace(/\/+$/, '') + '/w342'; }, function () {});
+    ambient.busy = Promise.all([a, h]).then(function () { ambient.t = Date.now(); ambient.busy = null; return ambient; });
+    return ambient.busy;
+  }
+  function ambientLive() {
+    var r = ambient.home && (ambient.home.rows || []).filter(function (x) { return x.id === 'live'; })[0];
+    return (r && r.tiles) || [];
+  }
+  function wxHtml(w) {
+    if (!w || w.error || w.temp == null) return '';
+    return '<span class="wx-i">' + esc(w.icon || '') + '</span><span class="wx-t">' + Math.round(w.temp) + '°</span><span class="wx-d"><b>' + esc(w.text || '') + '</b>' +
+      esc(w.place || '') + (w.max != null ? ' · ' + Math.round(w.min) + '° / ' + Math.round(w.max) + '°' : '') + (w.rain != null ? ' · rain ' + Math.round(w.rain) + '%' : '') + '</span>';
+  }
+  function recLine(r) {
+    if (!r) return '';
+    return r.status === 'recording' ? '● Recording now: ' + r.title : 'Next recording: ' + r.title + ' · ' + (new Date(r.start * 1000).toDateString() === new Date().toDateString() ? '' : DAYS[new Date(r.start * 1000).getDay()].slice(0, 3) + ' ') + hhmm(r.start);
+  }
+  function longDate(d) { return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; }
+
+  // ---------- calm home: the clock, where to go, the game consoles and apps; nothing moves, nothing shouts ----------
+  var APP_LABEL = { netflix: 'Netflix', youtube: 'YouTube', prime: 'Prime Video', disney: 'Disney+', spotify: 'Spotify' };
+  var calmGen = 0;
+  function showCalm() {
+    showTop(false); setTab(null); view.tab = 'calm';
+    var gen = ++calmGen, d = new Date(), last = S.get().lastChannel;
+    var places = [['home', 'Tonight', 'What to watch'], ['live', 'Live TV', last && last.name ? title(last.name) : 'All channels'], ['sport', 'Sport', 'Live right now'],
+      ['movies', 'Movies', ''], ['series', 'Series', ''], ['search', 'Search', 'Or type on your phone']];
+    screen.innerHTML = '<div class="calm"><div class="calm-top"><div><div class="calm-clock" id="calmClock">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</div>' +
+      '<div class="calm-date" id="calmDate">' + longDate(d) + '</div></div><div class="calm-wx" id="calmWx"></div></div>' +
+      '<div class="calm-row">' + places.map(function (p) {
+        return '<button class="f ctile" data-go="' + p[0] + '"><b>' + p[1] + '</b><span id="calmSub_' + p[0] + '">' + esc(p[2]) + '</span></button>'; }).join('') + '</div>' +
+      '<div class="calm-row dev" id="calmDev"></div>' +
+      '<div class="calm-foot"><div id="calmNote"></div><img src="img/wordmark-mascot.png" alt="Beeldbuis"></div></div>';
+    Array.prototype.forEach.call(screen.querySelectorAll('.ctile'), function (b) {
+      b.onclick = function () { var t = document.querySelector('.tab[data-tab="' + b.getAttribute('data-go') + '"]'); if (t) t.click(); };
+    });
+    view.back = confirmExit;
+    N.first(screen);
+    calmDev(null);
+    ambientLoad().then(function () { if (gen === calmGen && view.tab === 'calm' && $('#calmDev')) calmFill(); });
+  }
+  function calmDev(amb) {
+    var el = $('#calmDev'); if (!el) return;
+    var had = N.current() && el.contains(N.current()) ? N.current().getAttribute('data-id') : null;
+    var h = '';
+    if (amb) {
+      h += (amb.inputs || []).map(function (n) { return '<button class="f cdev" data-id="in:' + esc(n) + '" data-in="' + esc(n) + '"><i>🎮</i>' + esc(n) + '</button>'; }).join('');
+      h += (amb.apps || []).map(function (a) { return '<button class="f cdev" data-id="app:' + esc(a) + '" data-app="' + esc(a) + '"><i>▶</i>' + esc(APP_LABEL[a] || a) + '</button>'; }).join('');
+    }
+    h += '<button class="f cdev" data-id="set" id="calmSet"><i>⚙</i>Settings</button>';
+    el.innerHTML = h;
+    Array.prototype.forEach.call(el.querySelectorAll('[data-in]'), function (b) {
+      b.onclick = function () { toast('Switching to ' + esc(b.getAttribute('data-in')) + '…', 8000); MAC.post('/api/remote/send', { action: 'input', name: b.getAttribute('data-in') }, 40000).catch(function (e) { toast(errorMessage(e), 6000); }); };
+    });
+    Array.prototype.forEach.call(el.querySelectorAll('[data-app]'), function (b) {
+      b.onclick = function () { toast('Opening ' + esc(APP_LABEL[b.getAttribute('data-app')] || b.getAttribute('data-app')) + '…', 6000); MAC.post('/api/remote/send', { action: 'app', app: b.getAttribute('data-app') }, 40000).catch(function (e) { toast(errorMessage(e), 6000); }); };
+    });
+    $('#calmSet').onclick = showSettings;
+    if (had) { var again = el.querySelector('[data-id="' + had + '"]'); if (again) N.focus(again); }
+  }
+  function calmFill() {
+    var amb = ambient.amb || {};
+    $('#calmWx').innerHTML = wxHtml(amb.weather);
+    calmDev(amb);
+    var picks = ambient.home ? heroHtml(ambient.home) : [], lv = ambientLive();
+    if (picks.length && $('#calmSub_home')) $('#calmSub_home').textContent = picks[0].t.title || 'What to watch';
+    if ($('#calmSub_sport')) $('#calmSub_sport').textContent = lv.length ? lv.length + ' live now' : 'Nothing live right now';
+    $('#calmNote').textContent = recLine(amb.next_rec);
+  }
+
+  // ---------- screensaver: after a few quiet minutes the TV shows your photos and tonight's picks; any key brings you back ----------
+  var saver = { on: false, idle: null, tick: null, n: 0, slides: [], cur: null, since: 0, layer: 0 };
+  function saverMinutes() { var m = S.get().saverMin; return m == null ? 5 : m; }
+  function saverArm() {
+    clearTimeout(saver.idle);
+    if (saver.on || !saverMinutes()) return;
+    saver.idle = setTimeout(function () {
+      var t = document.activeElement;
+      if (play || document.hidden || !S.get().account || !$('#busy').classList.contains('hidden') || (t && t.tagName === 'INPUT')) return saverArm();
+      saverStart();
+    }, saverMinutes() * 60000);
+  }
+  function systemSaver(on) {
+    try { var ac = root.webapis.appcommon; ac.setScreenSaver(on ? ac.AppCommonScreenSaverState.SCREEN_SAVER_ON : ac.AppCommonScreenSaverState.SCREEN_SAVER_OFF); } catch (e) {}
+  }
+  function saverSlides() {
+    var out = [], amb = ambient.amb || {}, picks = ambient.home ? heroHtml(ambient.home) : [], l = MAC.link();
+    var base = ((ambient.home && ambient.home.img_base) || 'https://image.tmdb.org/t/p').replace(/\/w\d+$/, '').replace(/\/+$/, '');
+    var ph = [], i;
+    for (i = 0; l && i < Math.min(amb.photos || 0, 60); i++) ph.push({ type: 'photo', url: l.base + '/api/tv/photo?i=' + i + '&k=' + encodeURIComponent(l.key) });
+    var pk = picks.map(function (p) { return { type: 'pick', t: p.t, label: p.label, url: base + '/w1280' + p.t.meta.backdrop }; });
+    // two photos, then a pick; without photos only picks; without either a plain clock
+    if (ph.length) { var b = 0; ph.forEach(function (p, a) { out.push(p); if (a % 2 === 1 && pk.length) out.push(pk[b++ % pk.length]); }); }
+    else out = pk;
+    return out.length ? out : [{ type: 'plain' }];
+  }
+  function saverStart() {
+    if (saver.on) return;
+    saver.on = true; saver.since = Date.now(); saver.n = 0; saver.layer = 0; saver.cur = null;
+    clearTimeout(saver.idle);
+    var el = $('#saver');
+    el.innerHTML = '<div class="sv-img" id="sv0"></div><div class="sv-img" id="sv1"></div><div class="sv-shade"></div>' +
+      '<div class="sv-box" id="svBox"><div class="sv-clock" id="svClock"></div><div class="sv-date" id="svDate"></div><div class="sv-wx" id="svWx"></div>' +
+      '<div class="sv-cap" id="svCap"></div><div class="sv-line" id="svLine"></div></div><img class="sv-mascot" id="svMascot" src="img/icon-192.png" alt="">';
+    el.classList.remove('hidden');
+    systemSaver(false);
+    saver.slides = saverSlides();
+    saverShow();
+    saver.tick = setInterval(saverShow, 20000);
+    ambientLoad().then(function () { if (saver.on) saver.slides = saverSlides(); });
+  }
+  function saverStop() {
+    if (!saver.on) return;
+    saver.on = false;
+    clearInterval(saver.tick);
+    var el = $('#saver'); el.classList.add('hidden'); el.innerHTML = '';
+    systemSaver(true);
+    saverArm();
+  }
+  var SV_POS = [[110, 640], [1180, 640], [1180, 90], [110, 90]];
+  function saverShow() {
+    if (!saver.on) return;
+    var d = new Date(), amb = ambient.amb || {}, box = $('#svBox');
+    var rest = Date.now() - saver.since > 3 * 3600000;            // after three hours: only the clock, and the TV may dim or sleep
+    if (rest && !saver.rest) systemSaver(true);
+    saver.rest = rest;
+    var s = rest ? { type: 'plain' } : saver.slides[saver.n % saver.slides.length];
+    saver.cur = s;
+    var pos = SV_POS[saver.n % 4];
+    box.style.left = pos[0] + 'px'; box.style.top = pos[1] + 'px';
+    $('#svClock').textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    $('#svDate').textContent = longDate(d);
+    $('#svWx').innerHTML = rest ? '' : wxHtml(amb.weather);
+    $('#svCap').innerHTML = s.type === 'pick' ? '<span class="lchip">' + esc(s.label) + '</span> <b>' + esc((s.t.meta && s.t.meta.title) || s.t.title) + '</b>' + (s.t.year ? ' (' + esc(s.t.year) + ')' : '') + '<i>OK opens it</i>' : '';
+    var lv = ambientLive(), lines = [];
+    if (!rest) {
+      if (lv.length) { var t = lv[saver.n % lv.length]; lines.push('● Live now: ' + t.title + (t.channel ? ' · ' + t.channel : '')); }
+      if (amb.next_rec) lines.push(recLine(amb.next_rec));
+    }
+    $('#svLine').textContent = lines.length ? lines[saver.n % lines.length] : '';
+    $('#svMascot').classList.toggle('hidden', s.type !== 'plain');
+    document.getElementById('saver').className = 'sv-' + s.type;
+    var n = saver.n++;
+    var next = $('#sv' + (saver.layer ^ 1)), prev = $('#sv' + saver.layer);
+    function swap(url) {
+      if (!saver.on || saver.n !== n + 1) return;
+      next.style.backgroundImage = url ? 'url("' + url + '")' : 'none';
+      next.className = 'sv-img on' + (s.type === 'photo' ? ' photo' : '');
+      prev.className = prev.className.replace(' on', '');
+      saver.layer ^= 1;
+    }
+    if (s.url) {
+      var im = new Image();
+      im.onload = function () { saver.errs = 0; swap(s.url); };
+      im.onerror = function () {            // a picture that does not load: on to the next one, and a plain clock when none do
+        if (!saver.on || saver.n !== n + 1) return;
+        saver.errs = (saver.errs || 0) + 1;
+        if (saver.errs <= saver.slides.length && saver.errs < 6) saverShow(); else { saver.cur = { type: 'plain' }; $('#svCap').innerHTML = ''; swap(''); }
+      };
+      im.src = s.url;
+    }
+    else swap('');
+    if (saver.n % 30 === 0) ambientLoad(true).then(function () { if (saver.on) saver.slides = saverSlides(); });
+  }
+
   // ---------- keys ----------
+  function onKeyUp(e) {
+    if (P.KEYS[e.keyCode] !== 'ok' || !okHold.down) return;
+    clearTimeout(okHold.timer); okHold.down = 0;
+    if (!okHold.fired && play && play.live && !$('#modal')) { livePause(); showOsd(); }
+  }
   function onKey(e) {
     var a = P.KEYS[e.keyCode];
+    saverArm();
+    if (saver.on) {                       // any key wakes the screen; OK on a pick opens it
+      if (e.preventDefault) e.preventDefault();
+      var sv = saver.cur; saverStop();
+      if (a === 'ok' && sv && sv.type === 'pick' && !play) openMacItem(macTile(sv.t));
+      return;
+    }
     if (a === undefined) return;
     var t = e.target;
     // let the on-screen keyboard / text fields keep their own keys
@@ -2237,12 +2575,12 @@
     if (typeof a === 'number' && t && t.tagName === 'INPUT') return;
     e.preventDefault();
 
-    if (play && !$('#modal')) return playerKey(a);
+    if (play && !$('#modal')) return playerKey(a, e);
     if (a === 'back') {
       if ($('#modal') && $('#modal')._onBack) return $('#modal')._onBack();
       if (closeModal()) return;
       // on a tab's own screen Back first steps out: content -> sidebar -> tab bar, then leaves
-      if ((view.back === showHome || view.back === confirmExit) && N.climb()) return;
+      if ((view.back === showHome || view.back === confirmExit || view.back === showCalm) && N.climb()) return;
       if (view.back === 'exit') return P.exit();
       if (typeof view.back === 'function') return view.back();
       return;
@@ -2263,9 +2601,16 @@
       if (last && last.group) playLive(last.group, [last.group], 0);
     }
   }
-  function playerKey(a) {
+  function playerKey(a, e) {
+    if (a === 'back' && side.on) { sideSet(0); return; }
     if (a === 'back' || a === 'stop') { leavePlayer(); return; }
     if (play.live && play.item.type !== 'rec') {
+      // a short press on OK pauses; holding it opens match data next to the picture (needs the Mac)
+      if (a === 'ok' && e && e.type === 'keydown' && sideCan()) {
+        if (!okHold.down) { okHold.down = Date.now(); okHold.fired = false; okHold.timer = setTimeout(function () { okHold.fired = true; sideCycle(); }, 650); }
+        return;
+      }
+      if (a === 'info') { sideCycle(); return; }
       if (a === 'ok' || a === 'playpause') { livePause(); showOsd(); return; }
       if (a === 'pause') { livePause(true); showOsd(); return; }
       if (a === 'play') { if (play.pausedAt) livePause(false); else if (liveBehind() >= 15) goLive(); showOsd(); return; }
@@ -2313,17 +2658,19 @@
     wireTabs();
     fit(); root.addEventListener('resize', fit);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('keyup', onKeyUp);
     document.addEventListener('click', function (e) {          // mouse/pointer (Android phones, browser preview)
       var el = e.target.closest ? e.target.closest('.f') : null;
       if (el) N.focus(el, { noScroll: true });
     }, true);
     clock(); clockTimer = setInterval(clock, 10000);
-    document.addEventListener('visibilitychange', function () { if (document.hidden && play) stopPlayback(); });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) saverStop(); if (document.hidden && play) stopPlayback(); });
+    saverArm();
     S.load();
     if (root.BBRemote) root.BBRemote.start(function (c) { if (S.get().account) onRemote(c); });
     if (!S.get().account) return showLogin();
     if (!S.get().countries.length) return showCountries(true);
-    showHome();
+    if (S.get().startScreen === 'calm') showCalm(); else showHome();
     setTimeout(function () { syncChannels(true); }, 4000);
   }
 
@@ -2334,6 +2681,6 @@
     if (action === 'back') code = 27;
     onKey({ keyCode: code, target: document.activeElement, preventDefault: function () {} });
   };
-  root.BBApp = { start: start, version: VERSION, debug: function () { return { playing: !!play, tab: view.tab, modal: !!$('#modal'), mode: play && play.mode, url: play && play.url, name: play && play.item && play.item.name }; } };
+  root.BBApp = { start: start, version: VERSION, saver: saverStart, calm: showCalm, ambient: ambientLoad, debug: function () { return { side: side.on, saver: saver.on, playing: !!play, tab: view.tab, modal: !!$('#modal'), mode: play && play.mode, url: play && play.url, name: play && play.item && play.item.name }; } };
   start();
 })(this);
