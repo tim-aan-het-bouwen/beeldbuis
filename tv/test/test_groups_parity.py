@@ -12,6 +12,8 @@ random.seed(1)
 streams = [{"stream_id": i + 1, "name": n, "category_id": random.randrange(5), "tv_archive": random.choice([0, 1]),
             "tv_archive_duration": random.choice([1, 3]), "stream_icon": "", "epg_channel_id": "e%d" % i} for i, n in enumerate(names * 3)]
 py_groups, _ = mod.build_groups(cats, streams)
+for g in py_groups:            # the Mac keeps two fields of its own for its guide; the TV does not need them
+    g.pop("epgs", None); g.pop("epg0", None)
 py_clean = [list(mod.clean_name(n)) for n in names]
 js = subprocess.run(["node", "-e", """
 const G=require(process.argv[1]); const d=JSON.parse(require('fs').readFileSync(0,'utf8'));
