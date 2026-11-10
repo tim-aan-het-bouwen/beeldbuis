@@ -11,7 +11,7 @@ recording, movies and series, and a home screen that shows what you actually wan
 | Platform | Status | Folder |
 | --- | --- | --- |
 | macOS (Apple Silicon) | Working (phases 1–3: live, catch-up, recording, library, home screen) | [`mac/`](mac/) |
-| Samsung TV (Tizen) | First version, tested in the browser | [`tv/`](tv/) |
+| Samsung TV (Tizen) | Runs on a 2018 Samsung (Tizen 4): live TV, movies, series, search | [`tv/`](tv/) |
 | Android TV + phone | First version (TV app in a native wrapper, built by GitHub Actions) | [`android/`](android/) |
 
 The plan: one shared interface everywhere, with a player adapter per device
@@ -37,6 +37,14 @@ with taste profiles and a Letterboxd export zip. The updater copies those into t
 
 Your login, favourites and settings live in `~/Library/Application Support/IPTVPlayer/config.json`
 and never in this repository.
+
+## Downloads
+
+A new number in `VERSION` on `main` makes GitHub Actions publish a release with three files:
+`Beeldbuis.apk` (Android TV and phones), `Beeldbuis.wgt` (Samsung, sign before installing, see [`tv/`](tv/)) and
+`Beeldbuis-mac-update.zip` (unzip, double-click `Update Beeldbuis.command`). The TV app version lives in three places
+that change together: `VERSION`, `tv/app/config.xml` and `VERSION` in `tv/app/js/app.js`.
+The Mac app has its own counter (`VERSION` in `mac/src/server.py`), which the updater checks after installing.
 
 ## Credits
 

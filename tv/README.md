@@ -3,11 +3,13 @@
 One TV app for **Samsung TVs (Tizen)** and, wrapped in a small native app, **Android TV**. It talks to the
 Xtream Codes provider directly, so no computer has to be on to watch.
 
-What it does now (v0.1):
+What it does now (v0.2):
 
 - sign in with your own Xtream Codes details (kept on the TV only); type `demo` as server to look around
 - choose which country groups to show, so the TV never has to load 50,000 channels
-- Live TV per category, quality variants merged into one channel (falls back to another quality if one fails)
+- Live TV per category, quality variants merged into one channel; Full HD is tried first, with a fallback to another quality if one fails
+- search across channels, movies and series
+- adult categories hidden
 - Movies and Series with posters, details, seasons/episodes, resume and next episode
 - Home: continue watching, favourite channels, recently watched, my movies & series
 - remote only: arrows, OK, Back, CH▲▼ zaps, yellow = favourite, red = Live TV, ◀▶ seeks 10 s, ⏪⏩ 60 s
@@ -38,10 +40,15 @@ A real provider works too: the preview server passes its requests through `/prox
 
 The app then sits in the TV's app list. It does not replace the Samsung home screen.
 
+On a 2018 TV (Tizen 4) the current Samsung certificate profiles can be too new for the TV to accept. Signing with the
+default Tizen author certificate from Tizen Studio works for a TV in developer mode.
+
+Every release on GitHub also carries a ready-made `Beeldbuis.wgt` (unsigned; sign it as above before installing).
+
 Written for the 2018 models (Tizen 4, Chromium 56): flexbox only (no CSS grid or flex `gap`), ES2017 JavaScript
 (no `?.`, `??` or object spread). hls.js is only used by the browser preview and is left out of the `.wgt`.
 
 ## Android TV and phone
 
-Planned in `android/`: a small Kotlin app that shows this same interface in a WebView and plays streams
-with Media3 (ExoPlayer) through the `BeeldbuisAndroid` bridge in `js/player.js`.
+[`android/`](../android/) wraps this same interface in a WebView and plays streams with Media3 (ExoPlayer) through
+the `BeeldbuisAndroid` bridge in `js/player.js`. GitHub Actions builds the APK; see the Android README for installing it.
