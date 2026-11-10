@@ -2264,9 +2264,13 @@ function openSettings(){
 // ---------- TV remote & Play on TV
 let rmt = {};
 const APP_NAMES = { netflix: 'Netflix', youtube: 'YouTube', prime: 'Prime Video', disney: 'Disney+', spotify: 'Spotify' };
+let rmtWarn = '';
 async function rmtSend(body, quiet){
-  try { const r = await post('/api/remote/send', body); if (!quiet) toast('Sent to the TV.'); return r; }
-  catch (e) { toast(esc(e.message), 'warn', 7000); return null; }
+  // a press that hangs means the TV is showing its 'Allow?' question: say so once instead of leaving the button dead
+  const slow = setTimeout(() => { if (rmtWarn !== 'ask') { rmtWarn = 'ask'; toast('Look at the TV: choose <b>Allow</b> with the TV remote. This is asked only once.', 'warn', 30000); } }, 2500);
+  try { const r = await post('/api/remote/send', body); rmtWarn = ''; if (!quiet) toast('Sent to the TV.'); return r; }
+  catch (e) { if (rmtWarn !== e.message) { rmtWarn = e.message; toast(esc(e.message), 'warn', 7000); setTimeout(() => { if (rmtWarn === e.message) rmtWarn = ''; }, 7000); } return null; }
+  finally { clearTimeout(slow); }
 }
 async function rmtRefresh(){
   try { rmt = await api('/api/remote/status'); } catch { rmt = {}; }

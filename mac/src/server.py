@@ -52,7 +52,7 @@ HOST = "127.0.0.1"          # address the Mac itself uses
 BIND = os.environ.get("IPTV_BIND", "::")   # listen on all networks so an iPhone on the same Wi-Fi can connect
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Beeldbuis/15.0"
 AUTO_EXIT = "--auto-exit" in ARGS
-VERSION = 37
+VERSION = 38
 
 def _config_dir():
     """Where settings, caches and personal files live. An existing install keeps its folder (the first
@@ -5973,38 +5973,143 @@ def _ws_read(sock):
     return need(n).decode("utf-8", "replace")
 
 
-def tv_ws(messages, gap=0.35):
-    """Send messages (dicts, or ('sleep', s)) to the Samsung TV's remote channel."""
-    ip = remote_settings()["ip"]
-    if not ip:
-        raise RuntimeError("Beeldbuis does not know your TV yet. Open the Beeldbuis app on the TV once, or fill in the TV address in Settings.")
-    import base64
+class TvUnauthorized(RuntimeError):
+    pass
+
+
+TV_WS_LOCK = threading.Lock()
+
+
+def _tv_open(ip, port, name, token, wait):
+    """Open the TV's remote channel. Returns (socket, token the TV handed out or None). Port 8002 is the TV's
+    secured door: the first time the TV asks 'Allow?' on screen and then gives a token that skips the question."""
     try:
-        sock = socket.create_connection((ip, 8001), timeout=4)
+        sock = socket.create_connection((ip, port), timeout=4)
     except OSError as e:
         if getattr(e, "errno", None) in (65, 1, 13) and sys.platform == "darwin":   # EHOSTUNREACH/EPERM: macOS Local Network privacy
             raise RuntimeError("macOS does not let Beeldbuis reach the TV yet: System Settings → Privacy & Security → Local Network → switch on Python (or Beeldbuis).")
         raise RuntimeError("The TV does not answer. Is it on and connected to the network?")
     try:
+        if port == 8002:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)          # the TV signs its own certificate
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            try:
+                ctx.minimum_version = ssl.TLSVersion.TLSv1
+                ctx.set_ciphers("DEFAULT:@SECLEVEL=0")             # 2018 TVs speak older TLS
+            except (ValueError, ssl.SSLError, AttributeError):
+                pass
+            sock.settimeout(8)
+            sock = ctx.wrap_socket(sock)
         key = base64.b64encode(os.urandom(16)).decode()
-        path = "/api/v2/channels/samsung.remote.control?name=" + base64.b64encode(b"Beeldbuis").decode()
-        sock.sendall(("GET %s HTTP/1.1\r\nHost: %s:8001\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-                      "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\nOrigin: http://localhost\r\n\r\n" % (path, ip, key)).encode())
+        path = "/api/v2/channels/samsung.remote.control?name=" + base64.b64encode(name.encode("utf-8")).decode()
+        if token:
+            path += "&token=" + urllib.parse.quote(str(token))
+        sock.sendall(("GET %s HTTP/1.1\r\nHost: %s:%d\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                      "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\nOrigin: http://localhost\r\n\r\n" % (path, ip, port, key)).encode())
         head = b""
         while b"\r\n\r\n" not in head:
-            part = sock.recv(1024)
+            part = sock.recv(1)
             if not part:
                 break
             head += part
         if b" 101" not in head.split(b"\r\n", 1)[0]:
             raise RuntimeError("The TV refused the remote connection.")
-        sock.settimeout(6)
+        sock.settimeout(wait)
+        got = None
         try:
             first = _ws_read(sock)
-            if "unauthorized" in first:
-                raise RuntimeError("The TV asks for permission: choose Allow on the TV screen, then try again.")
+            try:
+                ev = json.loads(first)
+            except ValueError:
+                ev = {}
+            name_ = str(ev.get("event") or "")
+            if "unauthorized" in name_ or "unauthorized" in first[:200]:
+                raise TvUnauthorized("unauthorized")
+            if "timeOut" in name_ or "timeout" in name_.lower():
+                raise TvUnauthorized("timeout")
+            got = (ev.get("data") or {}).get("token") if isinstance(ev.get("data"), dict) else None
         except socket.timeout:
+            if port == 8002 and not token:
+                raise TvUnauthorized("timeout")
+        sock.settimeout(6)
+        return sock, got
+    except Exception:
+        try:
+            sock.close()
+        except OSError:
             pass
+        raise
+
+
+def tv_connect():
+    """A connected remote channel, pairing with the TV when it asks for that."""
+    ip = remote_settings()["ip"]
+    if not ip:
+        raise RuntimeError("Beeldbuis does not know your TV yet. Open the Beeldbuis app on the TV once, or fill in the TV address in Settings.")
+    with LOCK:
+        token = STATE["settings"].get("tv_token") or ""
+        name = STATE["settings"].get("tv_name") or "Beeldbuis"
+
+    def remember(nm, tk):
+        with LOCK:
+            changed = STATE["settings"].get("tv_token") != tk or STATE["settings"].get("tv_name") != nm
+            STATE["settings"]["tv_token"], STATE["settings"]["tv_name"] = tk, nm
+        if changed:
+            save_config()
+
+    if token:                                  # paired before: the secured door, no question on the TV
+        try:
+            sock, got = _tv_open(ip, 8002, name, token, 6)
+            if got and str(got) != str(token):
+                remember(name, str(got))
+            return sock
+        except TvUnauthorized:
+            remember(name, "")                 # the TV forgot us (reset, or removed from its device list): pair again
+        except (OSError, ssl.SSLError):
+            pass
+    else:
+        try:                                   # older TVs take commands on the open door without asking
+            return _tv_open(ip, 8001, name, None, 6)[0]
+        except TvUnauthorized:
+            pass
+    if not TV_WS_LOCK.acquire(False):
+        raise RuntimeError("The TV is asking for permission: choose Allow on the TV screen.")
+    ask = "The TV asks for permission: choose Allow on the TV screen, then try again."
+    try:
+        fresh = "Beeldbuis %d" % (int(time.time()) % 900 + 100)
+        # the secured door under our own name; refused at once (this name was denied on the TV before) or no
+        # secured door at all: knock again under a new name, last on the open door
+        tries = [(8002, name), (8002, fresh), (8001, fresh)]
+        last = hard = None
+        for port, nm in tries:
+            t0 = time.time()
+            try:
+                sock, got = _tv_open(ip, port, nm, None, 40 if port == 8002 else 6)   # 'Allow Beeldbuis?' on the TV: wait for the answer
+                remember(nm, str(got or ""))
+                return sock
+            except TvUnauthorized as e:
+                if str(e) == "timeout" or time.time() - t0 > 4:
+                    raise RuntimeError(ask)
+                last = "refused"
+            except (OSError, ssl.SSLError) as e:
+                last = str(e)[:80] or type(e).__name__
+            except RuntimeError as e:              # this door is shut: try the next one
+                hard = e
+        if last is None and hard:
+            raise hard
+        if last == "refused":
+            raise RuntimeError("The TV refuses remote controls. On the TV: Settings → General → External Device Manager → "
+                               "Device Connection Manager → switch Access Notification to 'First Time Only' and remove Beeldbuis from the Device List, then try again.")
+        raise RuntimeError("The TV asks for permission, but its secured connection did not open (%s)." % last)
+    finally:
+        TV_WS_LOCK.release()
+
+
+def tv_ws(messages, gap=0.35):
+    """Send messages (dicts, or ('sleep', s)) to the Samsung TV's remote channel."""
+    sock = tv_connect()
+    try:
         for m in messages:
             if isinstance(m, tuple):
                 time.sleep(m[1]); continue
