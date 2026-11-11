@@ -11,7 +11,6 @@ node test/tv_nav.js                     # TV app remote control (arrows, Back, t
 BASE=http://127.0.0.1:8765 node test/ui_session.js # player and Mac keep each other informed: keep-alive ping, lost stream, sleep, closing the window (update 34)
 node test/tv_vodmac.js <mac base> <fake provider base>   # Play on TV and films via the Mac (update 33)
 python3 test/tv_extras.py                # typing on the TV, match data, calm home, screensaver (update 35), ~3 min
-python3 test/tv_pair.py                  # pairing with a TV that asks for permission: secured port, token, new name (update 36), ~20 s
 ```
 
 - `test/fake_provider.py` is a fake Xtream server that behaves like a one-connection subscription: a second stream

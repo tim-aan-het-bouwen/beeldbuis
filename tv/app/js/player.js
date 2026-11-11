@@ -6,6 +6,17 @@
   'use strict';
   var P = root.BBPlatform;
   var FULL = [0, 0, 1920, 1080], rect = FULL;      // where the picture sits on the 1920x1080 stage
+  // The <object> for Samsung's player. 0.9.6: on the TV a faint rounded box showed in the middle of the picture while
+  // streaming: the object element itself drawn over the video plane. The picture goes where setDisplayRect says, not
+  // where the element sits, so by default the element is a 2x2 px dot in the top-left corner ('small').
+  // 'full' = full-size element that is never hidden; 'classic' = up to 0.9.5 (full size, hidden when not playing).
+  var layer = 'small';
+  function avObj() { return document.getElementById('avplayer'); }
+  function layerShow(playing) {
+    var o = avObj(); if (!o) return;
+    o.classList.toggle('av-small', layer === 'small');
+    o.classList.toggle('hidden', layer === 'classic' && !playing);
+  }
   var listener = { ready: function () {}, state: function () {}, time: function () {}, ended: function () {}, error: function () {}, subtitle: function () {} };
 
   function on(handlers) { Object.keys(handlers).forEach(function (k) { listener[k] = handlers[k]; }); }
@@ -23,7 +34,7 @@
     open: function (url, opts) {
       var av = root.webapis.avplay, self = this;
       try { av.stop(); av.close(); } catch (e) {}
-      document.getElementById('avplayer').classList.remove('hidden');
+      layerShow(true);
       av.open(url);
       av.setDisplayRect(rect[0], rect[1], rect[2], rect[3]);
       try { av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e) {}
@@ -66,7 +77,7 @@
     rect: function () { try { root.webapis.avplay.setDisplayRect(rect[0], rect[1], rect[2], rect[3]); } catch (e) {} return true; },
     stop: function () {
       try { root.webapis.avplay.stop(); root.webapis.avplay.close(); } catch (e) {}
-      document.getElementById('avplayer').classList.add('hidden');
+      layerShow(false);
     },
     toggle: function () {
       var av = root.webapis.avplay;
@@ -141,11 +152,42 @@
     position: function () { return document.getElementById('video').currentTime || 0; }
   };
 
-  var engine = P.isTizen ? tizenEngine : P.isAndroid ? androidEngine : browserEngine;
+  // ---------- .mp4 with its index at the end: <video> + Media Source, fed by js/mp4stream.js (0.9.9) ----------
+  var mse = null;
+  var remuxEngine = {
+    open: function (url, opts) {
+      var v = document.getElementById('video');
+      try { root.webapis.avplay.stop(); root.webapis.avplay.close(); } catch (e) {}
+      if (!mse) mse = root.BBMp4Stream.create(v, {
+        state: function (s) { listener.state(s); }, time: function (t, d) { listener.time(t, d); }, ended: function () { listener.ended(); },
+        error: function (c) { listener.error('REMUX ' + c); }, ready: function (i) { listener.ready({ subs: i.subs }); },
+        subtitle: function (t) { listener.subtitle(t || '', 0); }
+      });
+      v.classList.remove('hidden');
+      remuxEngine.rect();
+      mse.open(url, opts.start || 0, !!opts.englishSubs);
+    },
+    stop: function () { if (mse) mse.stop(); document.getElementById('video').classList.add('hidden'); },
+    rect: function () { return browserEngine.rect(); },
+    toggle: function () { var v = document.getElementById('video'); if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () {}); listener.state('playing'); } else { v.pause(); listener.state('paused'); } },
+    setPaused: function (on) { var v = document.getElementById('video'); if (on) v.pause(); else { var p = v.play(); if (p && p.catch) p.catch(function () {}); } },
+    seekBy: function (s) { if (mse) mse.seek(Math.max(0, mse.position() + s)); },
+    duration: function () { return mse ? mse.duration() : 0; },
+    position: function () { return mse ? mse.position() : 0; },
+    subtitles: function () { return false; }
+  };
+
+  var base = P.isTizen ? tizenEngine : P.isAndroid ? androidEngine : browserEngine, engine = base;
 
   root.BBPlayer = {
     on: on,
-    open: function (url, opts) { engine.open(url, opts || {}); },
+    open: function (url, opts) {
+      opts = opts || {};
+      var next = opts.remux && root.BBMp4Stream && root.BBMp4Stream.supported() ? remuxEngine : base;
+      if (next !== engine) { try { engine.stop(); } catch (e) {} engine = next; }
+      engine.open(url, opts);
+    },
+    remuxSupported: function () { return !!(root.BBMp4Stream && root.BBMp4Stream.supported()); },
     stop: function () { engine.stop(); },
     toggle: function () { engine.toggle(); },
     setPaused: function (on) { engine.setPaused(on); },
@@ -155,6 +197,8 @@
     subtitles: function (on) { return engine.subtitles ? engine.subtitles(on) : false; },
     subDelay: function (sec) { if (engine.subDelay) engine.subDelay(sec); },
     // shrink the picture (match data next to it) or null for full screen; false when this player cannot
+    // where Samsung's <object> sits: 'small' (default), 'full' or 'classic'
+    layer: function (m) { if (m) { layer = m === 'full' || m === 'classic' ? m : 'small'; layerShow(false); } return layer; },
     rect: function (r) { rect = r || FULL; return engine.rect ? engine.rect() : false; },
     pickEnglish: pickEnglish
   };

@@ -40,6 +40,12 @@ def make_media():
                        ["-c:s", "srt", "-metadata:s:s:0", "language=eng", "-metadata:s:a:0", "language=eng", mkv], check=True)
     if not os.path.exists(mp4):
         subprocess.run(["ffmpeg", "-v", "error", "-y"] + src + enc + ["-movflags", "+faststart", mp4], check=True)
+    end = os.path.join(MEDIA, "movie-moov-end.mp4")      # index at the end of the file, like many provider .mp4s (+ English mov_text)
+    if not os.path.exists(end):
+        # like the provider's files: a second audio language and subtitle tracks the TV does not play
+        subprocess.run(["ffmpeg", "-v", "error", "-y"] + src + ["-i", srt, "-map", "0", "-map", "1", "-map", "1", "-map", "2", "-map", "2", "-t", "90"] +
+                       enc[2:] + ["-c:s", "mov_text", "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=deu",
+                                  "-metadata:s:s:0", "language=nld", "-metadata:s:s:1", "language=eng", end], check=True)
 
 LIVE = ["ffmpeg", "-v", "error", "-nostdin", "-re", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25", "-f", "lavfi",
         "-i", "sine=frequency=440", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", "50", "-crf", "32",
@@ -49,6 +55,7 @@ LIVE = ["ffmpeg", "-v", "error", "-nostdin", "-re", "-f", "lavfi", "-i", "testsr
 # 905 is listed as .mp4 but only exists as .mkv (get_vod_info knows the real extension)
 DEAD = {"903", "906", "7002"}
 ONLY_EXT = {"905": "mkv"}
+MOOV_END = {"907", "7003"}   # .mp4 with its index at the end (the TV can't stream these straight from the provider)
 STATE = {"fail": 0, "stall_until": 0.0, "drop_gen": 0, "conns": [], "log": [], "limit": int(os.environ.get("FAKE_LIMIT", "1"))}
 LK = threading.Lock()
 
@@ -137,7 +144,7 @@ class H(BaseHTTPRequestHandler):
                 return self.send_error(500)
             if m.group(2) in ONLY_EXT and m.group(3) != ONLY_EXT[m.group(2)]:
                 return self.send_error(404)
-            fp = os.path.join(MEDIA, "movie.mp4" if m.group(3) == "mp4" else "movie.mkv")
+            fp = os.path.join(MEDIA, ("movie-moov-end.mp4" if m.group(2) in MOOV_END else "movie.mp4") if m.group(3) == "mp4" else "movie.mkv")
             return self.send_file(m.group(1), m.group(2), fp)
         self.send_error(404)
 

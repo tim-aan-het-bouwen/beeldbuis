@@ -51,12 +51,18 @@ class H(http.server.SimpleHTTPRequestHandler):
         s.send_response(200); s.send_header("Content-Type", ct); s.send_header("Content-Length", str(len(b))); s.end_headers(); s.wfile.write(b)
     def fwd(s, target, body=None):
         import urllib.request
-        req = urllib.request.Request(target, data=body, method=s.command, headers={"Content-Type": s.headers.get("Content-Type", "application/json")})
+        hdr = {"Content-Type": s.headers.get("Content-Type", "application/json")}
+        if s.headers.get("Range"): hdr["Range"] = s.headers["Range"]          # byte ranges pass through (mp4 index at the end)
+        req = urllib.request.Request(target, data=body, method=s.command, headers=hdr)
+        extra = {}
         try:
             r = urllib.request.urlopen(req, timeout=60); b = r.read(); code = r.status; ct = r.headers.get("Content-Type", "")
+            extra = {k: r.headers[k] for k in ("Content-Range", "Accept-Ranges") if r.headers.get(k)}
         except urllib.error.HTTPError as e:
             b = e.read(); code = e.code; ct = e.headers.get("Content-Type", "")
-        s.send_response(code); s.send_header("Content-Type", ct); s.send_header("Content-Length", str(len(b))); s.end_headers(); s.wfile.write(b)
+        s.send_response(code); s.send_header("Content-Type", ct); s.send_header("Content-Length", str(len(b)))
+        for k, v in extra.items(): s.send_header(k, v)
+        s.end_headers(); s.wfile.write(b)
     def own(s, t):
         q = urllib.parse.parse_qs(t.query)
         if t.path.endswith("player_api.php"): return s.send(json.dumps(api(q.get("action", [""])[0], q)).encode())

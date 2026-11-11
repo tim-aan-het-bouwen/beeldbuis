@@ -17,6 +17,7 @@
     omdbBase: '',             // tests only: a fake OMDb
     startScreen: 'calm',      // 'calm' = clock, consoles and apps first; 'tonight' = straight to Tonight
     saverMin: 5,              // screensaver after this many quiet minutes; 0 = off
+    avLayer: 'small',         // where Samsung's player element sits (0.9.6): 'small', 'full' or 'classic'
     mac: null,                // optional link with Beeldbuis on a Mac: {base, key, name}
     profiles: null            // {p1: {name, favorites, recent, positions}, ...}; names are set on the device
   };

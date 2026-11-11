@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var P = root.BBPlatform, S = root.BBStore, X = root.BBXtream, PL = root.BBPlayer, N = root.BBNav, G = root.BBGroups, SR = root.BBSearch, OM = root.BBOmdb, MAC = root.BBMac;
-  var VERSION = '0.9.5';
+  var VERSION = '0.9.9';
   var $ = function (sel) { return document.querySelector(sel); };
   var screen = $('#screen');
 
@@ -514,10 +514,10 @@
     if (c.action === 'text') return remoteText(c);
     if (c.action === 'panel') { if ($('#modal')) closeModal(); return sideCycle(); }
     if ($('#modal')) closeModal();
-    if (c.action === 'play' && c.name === 'Beeldbuis self-test' && root.BBDiag) {   // diagnosis from the Mac (0.9.3)
+    if (c.action === 'play' && /^Beeldbuis self-test/.test(c.name || '') && root.BBDiag) {   // diagnosis from the Mac (0.9.3; "… vod" = 0.9.7 file tests)
       if (play) stopPlayback();
       toast('Player self-test running (about 3 minutes)…', 8000);
-      root.BBDiag.run({ live: c.kind === 'live' ? c.id : null, episode: c.kind === 'episode' ? c.id : null, ext: c.ext });
+      root.BBDiag.run({ live: c.kind === 'live' ? c.id : null, episode: c.kind === 'episode' ? c.id : null, ext: c.ext, vod: /vod$/.test(c.name), movie: c.kind === 'movie' ? c.id : null });
       return;
     }
     if (c.action === 'play') {
@@ -1725,6 +1725,7 @@
   }
 
   // ---------- settings ----------
+  function layerLabel() { return { small: 'Small (default)', full: 'Full screen', classic: 'Classic (up to 0.9.5)' }[PL.layer()]; }
   function startLabel() { return S.get().startScreen === 'calm' ? 'Calm home (clock, consoles and apps)' : 'Tonight'; }
   function saverLabel() { var m = saverMinutes(); return m ? 'After ' + m + ' minutes · your photos and tonight\'s picks' : 'Off'; }
   function showSettings() {
@@ -1734,6 +1735,7 @@
       '<button class="f setting" id="stCountries"><b>Channel groups</b><span>' + esc(s.countries.join(', ') || 'none') + '</span></button>' +
       '<button class="f setting" id="stSubs"><b>English subtitles</b><span>' + (s.englishSubs ? 'On' : 'Off') + '</span></button>' +
       '<button class="f setting" id="stSubStyle"><b>Subtitle style</b><span>' + esc(subSummary()) + '</span></button>' +
+      '<button class="f setting" id="stLayer"><b>Video layer</b><span>' + layerLabel() + '</span></button>' +
       '<button class="f setting" id="stQuality"><b>Picture quality</b><span>' + (s.quality === 'best' ? 'Best available (4K first)' : 'Full HD first (steadier)') + '</span></button>' +
       '<button class="f setting" id="stAdult"><b>Adult categories</b><span>' + (s.showAdult ? 'Shown' : 'Hidden') + '</span></button>' +
       '<button class="f setting" id="stProfiles"><b>Profiles</b><span>' + S.PROFILE_IDS.map(function (id) { return esc(S.profileName(id)); }).join(', ') + '</span></button>' +
@@ -1748,6 +1750,7 @@
     $('#stCountries').onclick = function () { showCountries(false); };
     $('#stSubs').onclick = function () { s.englishSubs = !s.englishSubs; S.save(); $('#stSubs span').textContent = s.englishSubs ? 'On' : 'Off'; };
     $('#stSubStyle').onclick = showSubMenu;
+    $('#stLayer').onclick = function () { var o = ['small', 'full', 'classic']; s.avLayer = o[(o.indexOf(PL.layer()) + 1) % o.length]; S.save(); PL.layer(s.avLayer); $('#stLayer span').textContent = layerLabel(); };
     $('#stStart').onclick = function () { s.startScreen = s.startScreen === 'calm' ? 'tonight' : 'calm'; S.save(); $('#stStart span').textContent = startLabel(); };
     $('#stSaver').onclick = function () { var o = [0, 2, 5, 10, 20], i = o.indexOf(saverMinutes()); s.saverMin = o[(i + 1) % o.length]; S.save(); $('#stSaver span').textContent = saverLabel(); saverArm(); };
     $('#stQuality').onclick = function () { s.quality = s.quality === 'best' ? 'fhd' : 'best'; S.save(); $('#stQuality span').textContent = s.quality === 'best' ? 'Best available (4K first)' : 'Full HD first (steadier)'; };
@@ -1807,7 +1810,7 @@
     play = { item: item, url: url, opts: opts, returnTo: returnTo, live: !!opts.live, started: Date.now() };
     document.body.classList.add('playing');
     showOsd(true);
-    PL.open(url, { live: opts.live, start: opts.start || 0, englishSubs: S.get().englishSubs && !opts.live });
+    PL.open(url, { live: opts.live, start: opts.start || 0, englishSubs: S.get().englishSubs && !opts.live, remux: !!opts.remux });
     clearInterval(saveTimer);
     if (!opts.live) { saveTimer = setInterval(savePos, 15000); if (item.type === 'movie' || item.type === 'episode') vodWatch(play); }
     if (root.BBRemote) root.BBRemote.now({ name: item.name, kind: item.type });
@@ -2114,38 +2117,89 @@
     };
   }
   var playVod = guarded(playVodNow), playEpisode = guarded(playEpisodeNow);
-  // Films and episodes in .mp4 often keep their index at the END of the file, and the provider answers byte-range
-  // requests with a broken header ("Accept-Ranges: 0-<size>" instead of "bytes"): the TV's player then never starts.
-  // .mkv plays straight from the provider; .mp4 goes through Beeldbuis on the Mac (/direct passes the file through
-  // with proper ranges) when the TV is linked to it.
-  function vodSrc(kind, id, ext) {
+  // Most .mp4 files play straight from the provider. Some keep their index ('moov') at the END of the file; the TV's
+  // player then asks the provider for the file's tail in a form the provider's server refuses, and never starts.
+  // So for .mp4 the TV first reads the first 64 KB and looks at the box order: index first = straight from the provider
+  // (no Mac needed); index at the end = through Beeldbuis on the Mac (/direct serves proper ranges) when linked.
+  var moovSeen = {};
+  function moovFirst(url, key) {
+    if (moovSeen[key] !== undefined) return Promise.resolve(moovSeen[key]);
+    return new Promise(function (resolve) {
+      var x = new XMLHttpRequest(), done = false;
+      function fin(v) { if (done) return; done = true; if (v !== null) moovSeen[key] = v; resolve(v); }
+      try {
+        x.open('GET', P.xurl(url)); x.responseType = 'arraybuffer'; x.timeout = 8000;
+        x.setRequestHeader('Range', 'bytes=0-65535');
+        x.onload = function () {
+          if (x.status !== 200 && x.status !== 206) return fin(null);
+          var b = new DataView(x.response), pos = 0, n = b.byteLength;
+          while (pos + 8 <= n) {
+            var size = b.getUint32(pos), type = String.fromCharCode(b.getUint8(pos + 4), b.getUint8(pos + 5), b.getUint8(pos + 6), b.getUint8(pos + 7));
+            if (type === 'moov') return fin(true);
+            if (type === 'mdat') return fin(false);
+            if (size === 1 && pos + 16 <= n) size = b.getUint32(pos + 8) * 4294967296 + b.getUint32(pos + 12);
+            if (size < 8) return fin(null);
+            pos += size;
+          }
+          fin(null);                                  // a box bigger than 64 KB before moov/mdat: unknown
+        };
+        x.onerror = x.ontimeout = function () { fin(null); };
+        x.send();
+      } catch (e) { fin(null); }
+    });
+  }
+  function vodPick(kind, id, ext) {
     ext = ext || 'mp4';
+    var direct = { mode: 'direct', url: kind === 'movie' ? X.vodUrl(id, ext) : X.episodeUrl(id, ext) };
+    if (!/^(mp4|m4v|mov)$/i.test(ext)) return Promise.resolve(direct);
+    return moovFirst(direct.url, kind + ':' + id).then(function (first) {
+      var l = MAC.link();
+      // 0.9.9: the TV reads the index from the end itself and plays through its browser player: no Mac needed
+      if (first === false && PL.remuxSupported && PL.remuxSupported() && !S.get().noRemux) return { mode: 'remux', url: direct.url, remux: true };
+      if (first === false && l) return { mode: 'macdirect', url: l.base + '/direct/' + kind + '/' + encodeURIComponent(id) + '.' + ext + '?k=' + encodeURIComponent(l.key) };
+      if (first === false) direct.moovAtEnd = true;
+      return direct;
+    });
+  }
+  function vodSrc(kind, id, ext) {                // kept for the Mac fallback path (another copy through the Mac)
     var l = MAC.link();
-    if (l && /^(mp4|m4v|mov)$/i.test(ext))
-      return { mode: 'macdirect', url: l.base + '/direct/' + kind + '/' + encodeURIComponent(id) + '.' + ext + '?k=' + encodeURIComponent(l.key) };
+    if (l && /^(mp4|m4v|mov)$/i.test(ext || 'mp4'))
+      return { mode: 'macdirect', url: l.base + '/direct/' + kind + '/' + encodeURIComponent(id) + '.' + (ext || 'mp4') + '?k=' + encodeURIComponent(l.key) };
     return { mode: 'direct', url: kind === 'movie' ? X.vodUrl(id, ext) : X.episodeUrl(id, ext) };
+  }
+  var vodToken = 0;
+  function startVod(kind, it, item, start) {
+    var token = ++vodToken;
+    busy(true, 'Opening ' + (it.name || '') + '…');
+    vodPick(kind, it.id, it.ext).then(function (src) {
+      busy(false);
+      if (token !== vodToken) return;
+      startPlayback(src.url, item, { live: false, start: start, remux: !!src.remux });
+      play.mode = src.mode; play.moovAtEnd = !!src.moovAtEnd || !!src.remux;
+      play.vod = { kind: kind, id: it.id, ext: it.ext || 'mp4' };
+      $('#osdTitle').textContent = it.name; $('#osdSub').textContent = '▲ Subtitles';
+    });
   }
   function playVodNow(it, start) {
     S.addRecent(stripItem(it));
-    var src = vodSrc('movie', it.id, it.ext);
-    startPlayback(src.url, stripItem(it), { live: false, start: start });
-    play.mode = src.mode;
-    play.vod = { kind: 'movie', id: it.id, ext: it.ext || 'mp4' };
-    $('#osdTitle').textContent = it.name; $('#osdSub').textContent = '▲ Subtitles';
+    startVod('movie', it, stripItem(it), start);
   }
   function playEpisodeNow(ep, seriesItem, pos) {
-    var start = pos ? pos.t : 0;
     S.addRecent(seriesItem || ep);
-    var src = vodSrc('series', ep.id, ep.ext);
-    startPlayback(src.url, ep, { live: false, start: start });
-    play.mode = src.mode;
-    play.vod = { kind: 'series', id: ep.id, ext: ep.ext || 'mp4' };
-    $('#osdTitle').textContent = ep.name; $('#osdSub').textContent = '▲ Subtitles';
+    startVod('series', ep, ep, pos ? pos.t : 0);
   }
   // A film or episode that does not open straight from the provider (the TV's player can't always follow the provider's
   // secure links and redirects, or the file is missing): the Mac fetches it instead, finds a working copy (other
   // extension or edition) and hands the TV a plain stream on the home network.
   function vodViaMac(p, why) {
+    if (p && p.mode === 'remux' && MAC.link() && p.vod) {      // the TV's own way did not start: the Mac passes the file through
+      var l0 = MAC.link(), at0 = Math.max(p.opts.start || 0, PL.position ? PL.position() : 0);
+      p.mode = 'macdirect'; p.started = Date.now(); p.progressAt = 0;
+      p.url = l0.base + '/direct/' + p.vod.kind + '/' + encodeURIComponent(p.vod.id) + '.' + p.vod.ext + '?k=' + encodeURIComponent(l0.key);
+      PL.open(p.url, { live: false, start: at0, englishSubs: S.get().englishSubs });
+      vodWatch(p);
+      return true;
+    }
     if (!p || !p.vod || p.mode === 'macvod' || !MAC.link()) return false;
     var at = Math.max(p.opts.start || 0, PL.position ? PL.position() : 0), item = p.item, ret = p.returnTo;
     p.mode = 'macvod';
@@ -2187,8 +2241,8 @@
     p.watch = setTimeout(function () {
       if (play !== p || p.progressAt) return;
       var why = 'no picture after 30 s';
-      if (!vodViaMac(p, why)) failPlayback(MAC.link() || !/\.(mp4|m4v|mov)$/i.test(p.url || '') ? 'This stream does not start (' + why + ').'
-        : 'This file does not start on the TV straight from the provider. Link Beeldbuis on your Mac (Settings → Beeldbuis on your Mac) and it plays through the Mac.');
+      if (!vodViaMac(p, why)) failPlayback(!p.moovAtEnd ? 'This stream does not start (' + why + ').'
+        : 'This file is stored in a way the TV can\u2019t stream straight from your provider. Beeldbuis on your Mac can play it for the TV (Settings → Beeldbuis on your Mac).');
     }, 30000);
   }
   function nextEpisode() {
@@ -2655,6 +2709,7 @@
   }
   function start() {
     P.registerKeys();
+    PL.layer(S.get().avLayer || 'small');
     wireTabs();
     fit(); root.addEventListener('resize', fit);
     document.addEventListener('keydown', onKey);
@@ -2681,6 +2736,6 @@
     if (action === 'back') code = 27;
     onKey({ keyCode: code, target: document.activeElement, preventDefault: function () {} });
   };
-  root.BBApp = { start: start, version: VERSION, saver: saverStart, calm: showCalm, ambient: ambientLoad, debug: function () { return { side: side.on, saver: saver.on, playing: !!play, tab: view.tab, modal: !!$('#modal'), mode: play && play.mode, url: play && play.url, name: play && play.item && play.item.name }; } };
+  root.BBApp = { start: start, version: VERSION, remote: function (c) { onRemote(c); }, saver: saverStart, calm: showCalm, ambient: ambientLoad, debug: function () { return { side: side.on, saver: saver.on, playing: !!play, tab: view.tab, modal: !!$('#modal'), mode: play && play.mode, url: play && play.url, name: play && play.item && play.item.name, progress: !!(play && play.progressAt), pos: PL.position(), state: play && play.state }; } };
   start();
 })(this);

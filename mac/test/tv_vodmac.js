@@ -1,4 +1,4 @@
-// Play on TV + VOD via the Mac (update 33 / tv-app 0.9.2, .mp4 through /direct since 0.9.4). Needs a running Beeldbuis server on a fake provider:
+// Play on TV + VOD via the Mac (update 33 / tv-app 0.9.2; since 0.9.8 only .mp4 with the index at the end goes through /direct). Needs a running Beeldbuis server on a fake provider:
 //   node test/tv_vodmac.js <mac base> <fake provider base> [tv source folder]
 // The Mac sends a film whose file is gone at the provider (903; its 4K edition 904 works). The TV's player fails on the
 // provider link, falls back to the Mac (which finds the edition) and reports what it plays; the Mac's card follows it.
@@ -47,12 +47,24 @@ const j = async (u, body) => (await fetch(MAC + u, body ? { method: 'POST', head
   const card = await mac.evaluate(() => document.querySelector('#overlay').innerText.replace(/\s+/g, ' '));
   ok(/Playing on the TV/.test(card) && /Dead film/.test(card), 'the Mac card follows the TV', card);
   // a stream that never answers: the TV gives up after 30 s instead of "Loading…" forever (watchdog) - checked by mode change above
-  // an .mp4 that exists goes through the Mac's /direct straight away (the provider's broken range header and an index at
-  // the end of the file stop the TV's own player)
-  await j('/api/remote/send', { action: 'play', kind: 'movie', id: '901', ext: 'mp4', name: 'Good film', t: 0 });
-  d = {};
-  for (let i = 0; i < 20 && d.name !== 'Good film'; i++) { await sleep(500); d = await tv.evaluate(() => BBApp.debug()); }
-  ok(d.mode === 'macdirect' && /\/direct\/movie\/901\.mp4\?k=/.test(d.url || ''), 'an .mp4 plays through the Mac’s /direct right away', JSON.stringify(d));
+  // 0.9.8: an .mp4 with its index at the start plays straight from the provider (no Mac); one with its index at the
+  // end (the provider can't serve its tail the way the TV's player asks) goes through the Mac's /direct
+  const playWait = async (id, name) => {
+    await j('/api/remote/send', { action: 'play', kind: 'movie', id, ext: 'mp4', name, t: 0 });
+    let x = {};
+    for (let i = 0; i < 20 && x.name !== name; i++) { await sleep(500); x = await tv.evaluate(() => BBApp.debug()); }
+    return x;
+  };
+  d = await playWait('901', 'Good film');
+  ok(d.mode === 'direct' && d.url.indexOf(FAKE) === 0, 'an .mp4 with its index first plays straight from the provider', JSON.stringify(d));
+  d = await playWait('907', 'Index at the end');
+  ok(d.mode === 'remux' && d.url.indexOf(FAKE) === 0, 'an .mp4 with its index at the end also plays straight from the provider (0.9.9, TV reads the index itself)', JSON.stringify(d));
+  // and when the TV's own way does not start, the Mac takes over: simulate with the setting that turns it off
+  await tv.evaluate(() => { const s = BBStore.get(); s.noRemux = true; BBStore.save(); });
+  await j('/api/remote/send', { action: 'stop' }); await sleep(800);
+  d = await playWait('907', 'Index at the end, no remux');
+  ok(d.mode === 'macdirect' && /\/direct\/movie\/907\.mp4\?k=/.test(d.url || ''), 'without that, an .mp4 with its index at the end plays through the Mac\u2019s /direct', JSON.stringify(d));
+  await tv.evaluate(() => { const s = BBStore.get(); delete s.noRemux; BBStore.save(); });
   await j('/api/remote/send', { action: 'stop' });
   await sleep(2500);
   d = await tv.evaluate(() => BBApp.debug());

@@ -48,6 +48,15 @@ Every release on GitHub also carries a ready-made `Beeldbuis.wgt` (unsigned; sig
 Written for the 2018 models (Tizen 4, Chromium 56): flexbox only (no CSS grid or flex `gap`), ES2017 JavaScript
 (no `?.`, `??` or object spread). hls.js is only used by the browser preview and is left out of the `.wgt`.
 
+## Films and episodes in .mp4
+
+Many provider `.mp4` files keep their index (the `moov` box) at the end of the file, and some providers answer byte
+ranges in a way the Samsung player cannot use, so it hangs on them. The app first reads the start of the file: with the
+index first it plays straight from the provider; with the index at the end it reads that index itself with
+[mp4box.js](https://github.com/gpac/mp4box.js) (BSD, `js/mp4box.all.min.js`) and feeds the picture to the browser's own
+player through Media Source (`js/mp4stream.js`), fetching the file in 4 MB pieces. No computer needed. When the Mac app is
+linked it is the fallback; the stored setting `noRemux: true` switches the TV's own way off (the tests use it).
+
 ## Android TV and phone
 
 [`android/`](../android/) wraps this same interface in a WebView and plays streams with Media3 (ExoPlayer) through

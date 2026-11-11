@@ -23,6 +23,8 @@ img { display: block; }
 #avplayer, #video { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
 /* Samsung's player draws on a plane *behind* the page: its <object> must stay see-through, or it hides the picture */
 #avplayer { background: transparent; }
+/* 0.9.6: the element as a 2 px dot in the corner (the picture still fills the screen: setDisplayRect places it) */
+#avplayer.av-small { width: 2px; height: 2px; opacity: .01; }
 #video { background: #000; }
 body.playing #top, body.playing #screen { display: none; }
 /* the TV's and Android's video plane sits behind the page: everything must be see-through while playing */
