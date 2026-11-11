@@ -211,7 +211,13 @@
 
     function setup(s, g, info, start, wantSubs) {
       var mp4 = s.mp4, ms = s.ms = new root.MediaSource();
-      var vtrack = info.videoTracks[0], atrack = info.audioTracks[0];
+      var vtrack = info.videoTracks[0], atrack = null;
+      var okAudio = function (t) { return root.MediaSource.isTypeSupported('audio/mp4; codecs="' + t.codec + '"'); };
+      (info.audioTracks || []).forEach(function (t) {          // first audio the TV can decode, English preferred
+        if (!okAudio(t)) return;
+        if (!atrack || (/^(eng|en)$/i.test(t.language || '') && !/^(eng|en)$/i.test(atrack.language || ''))) atrack = t;
+      });
+      if (!atrack && (info.audioTracks || []).length) { fail('CODEC audio ' + info.audioTracks[0].codec); return; }   // no silent films: let the app fall back
       if (!vtrack) { fail('NO_VIDEO'); return; }
       var want = [vtrack].concat(atrack ? [atrack] : []);
       var subTrack = null;
