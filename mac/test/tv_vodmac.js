@@ -1,4 +1,4 @@
-// Play on TV + VOD via the Mac (update 33 / tv-app 0.9.2). Needs a running Beeldbuis server on a fake provider:
+// Play on TV + VOD via the Mac (update 33 / tv-app 0.9.2, .mp4 through /direct since 0.9.4). Needs a running Beeldbuis server on a fake provider:
 //   node test/tv_vodmac.js <mac base> <fake provider base> [tv source folder]
 // The Mac sends a film whose file is gone at the provider (903; its 4K edition 904 works). The TV's player fails on the
 // provider link, falls back to the Mac (which finds the edition) and reports what it plays; the Mac's card follows it.
@@ -47,6 +47,12 @@ const j = async (u, body) => (await fetch(MAC + u, body ? { method: 'POST', head
   const card = await mac.evaluate(() => document.querySelector('#overlay').innerText.replace(/\s+/g, ' '));
   ok(/Playing on the TV/.test(card) && /Dead film/.test(card), 'the Mac card follows the TV', card);
   // a stream that never answers: the TV gives up after 30 s instead of "Loading…" forever (watchdog) - checked by mode change above
+  // an .mp4 that exists goes through the Mac's /direct straight away (the provider's broken range header and an index at
+  // the end of the file stop the TV's own player)
+  await j('/api/remote/send', { action: 'play', kind: 'movie', id: '901', ext: 'mp4', name: 'Good film', t: 0 });
+  d = {};
+  for (let i = 0; i < 20 && d.name !== 'Good film'; i++) { await sleep(500); d = await tv.evaluate(() => BBApp.debug()); }
+  ok(d.mode === 'macdirect' && /\/direct\/movie\/901\.mp4\?k=/.test(d.url || ''), 'an .mp4 plays through the Mac’s /direct right away', JSON.stringify(d));
   await j('/api/remote/send', { action: 'stop' });
   await sleep(2500);
   d = await tv.evaluate(() => BBApp.debug());

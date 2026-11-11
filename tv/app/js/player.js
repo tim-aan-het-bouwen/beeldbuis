@@ -5,6 +5,7 @@
 (function (root) {
   'use strict';
   var P = root.BBPlatform;
+  var FULL = [0, 0, 1920, 1080], rect = FULL;      // where the picture sits on the 1920x1080 stage
   var listener = { ready: function () {}, state: function () {}, time: function () {}, ended: function () {}, error: function () {}, subtitle: function () {} };
 
   function on(handlers) { Object.keys(handlers).forEach(function (k) { listener[k] = handlers[k]; }); }
@@ -24,7 +25,7 @@
       try { av.stop(); av.close(); } catch (e) {}
       document.getElementById('avplayer').classList.remove('hidden');
       av.open(url);
-      av.setDisplayRect(0, 0, 1920, 1080);
+      av.setDisplayRect(rect[0], rect[1], rect[2], rect[3]);
       try { av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e) {}
       av.setListener({
         onbufferingstart: function () { listener.state('buffering'); },
@@ -62,6 +63,7 @@
       try { root.webapis.avplay.setSilentSubtitle(true); } catch (e) {}
       return false;
     },
+    rect: function () { try { root.webapis.avplay.setDisplayRect(rect[0], rect[1], rect[2], rect[3]); } catch (e) {} return true; },
     stop: function () {
       try { root.webapis.avplay.stop(); root.webapis.avplay.close(); } catch (e) {}
       document.getElementById('avplayer').classList.add('hidden');
@@ -100,6 +102,7 @@
       var v = document.getElementById('video');
       browserEngine.stop();
       v.classList.remove('hidden');
+      browserEngine.rect();
       v.onplaying = function () { listener.state('playing'); };
       v.onwaiting = function () { listener.state('buffering'); };
       v.onpause = function () { if (!v.ended) listener.state('paused'); };
@@ -130,6 +133,7 @@
       v.onerror = null; v.removeAttribute('src'); try { v.load(); } catch (e) {}
       v.classList.add('hidden');
     },
+    rect: function () { var v = document.getElementById('video'); v.style.left = rect[0] + 'px'; v.style.top = rect[1] + 'px'; v.style.width = rect[2] + 'px'; v.style.height = rect[3] + 'px'; return true; },
     toggle: function () { var v = document.getElementById('video'); if (v.paused) v.play(); else v.pause(); },
     setPaused: function (on) { var v = document.getElementById('video'); if (on) v.pause(); else { var p = v.play(); if (p && p.catch) p.catch(function () {}); } },
     seekBy: function (s) { var v = document.getElementById('video'); v.currentTime = Math.max(0, v.currentTime + s); },
@@ -150,6 +154,8 @@
     position: function () { return engine.position(); },
     subtitles: function (on) { return engine.subtitles ? engine.subtitles(on) : false; },
     subDelay: function (sec) { if (engine.subDelay) engine.subDelay(sec); },
+    // shrink the picture (match data next to it) or null for full screen; false when this player cannot
+    rect: function (r) { rect = r || FULL; return engine.rect ? engine.rect() : false; },
     pickEnglish: pickEnglish
   };
 })(this);

@@ -12,6 +12,7 @@ Credentials are stored locally only, in:
   ~/Library/Application Support/IPTVPlayer/config.json
 """
 import base64
+import hashlib
 import calendar
 import secrets
 import socket
@@ -51,7 +52,7 @@ HOST = "127.0.0.1"          # address the Mac itself uses
 BIND = os.environ.get("IPTV_BIND", "::")   # listen on all networks so an iPhone on the same Wi-Fi can connect
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Beeldbuis/15.0"
 AUTO_EXIT = "--auto-exit" in ARGS
-VERSION = 36
+VERSION = 38
 
 def _config_dir():
     """Where settings, caches and personal files live. An existing install keeps its folder (the first
@@ -5972,38 +5973,143 @@ def _ws_read(sock):
     return need(n).decode("utf-8", "replace")
 
 
-def tv_ws(messages, gap=0.35):
-    """Send messages (dicts, or ('sleep', s)) to the Samsung TV's remote channel."""
-    ip = remote_settings()["ip"]
-    if not ip:
-        raise RuntimeError("Beeldbuis does not know your TV yet. Open the Beeldbuis app on the TV once, or fill in the TV address in Settings.")
-    import base64
+class TvUnauthorized(RuntimeError):
+    pass
+
+
+TV_WS_LOCK = threading.Lock()
+
+
+def _tv_open(ip, port, name, token, wait):
+    """Open the TV's remote channel. Returns (socket, token the TV handed out or None). Port 8002 is the TV's
+    secured door: the first time the TV asks 'Allow?' on screen and then gives a token that skips the question."""
     try:
-        sock = socket.create_connection((ip, 8001), timeout=4)
+        sock = socket.create_connection((ip, port), timeout=4)
     except OSError as e:
         if getattr(e, "errno", None) in (65, 1, 13) and sys.platform == "darwin":   # EHOSTUNREACH/EPERM: macOS Local Network privacy
             raise RuntimeError("macOS does not let Beeldbuis reach the TV yet: System Settings → Privacy & Security → Local Network → switch on Python (or Beeldbuis).")
         raise RuntimeError("The TV does not answer. Is it on and connected to the network?")
     try:
+        if port == 8002:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)          # the TV signs its own certificate
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            try:
+                ctx.minimum_version = ssl.TLSVersion.TLSv1
+                ctx.set_ciphers("DEFAULT:@SECLEVEL=0")             # 2018 TVs speak older TLS
+            except (ValueError, ssl.SSLError, AttributeError):
+                pass
+            sock.settimeout(8)
+            sock = ctx.wrap_socket(sock)
         key = base64.b64encode(os.urandom(16)).decode()
-        path = "/api/v2/channels/samsung.remote.control?name=" + base64.b64encode(b"Beeldbuis").decode()
-        sock.sendall(("GET %s HTTP/1.1\r\nHost: %s:8001\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-                      "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\nOrigin: http://localhost\r\n\r\n" % (path, ip, key)).encode())
+        path = "/api/v2/channels/samsung.remote.control?name=" + base64.b64encode(name.encode("utf-8")).decode()
+        if token:
+            path += "&token=" + urllib.parse.quote(str(token))
+        sock.sendall(("GET %s HTTP/1.1\r\nHost: %s:%d\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                      "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\nOrigin: http://localhost\r\n\r\n" % (path, ip, port, key)).encode())
         head = b""
         while b"\r\n\r\n" not in head:
-            part = sock.recv(1024)
+            part = sock.recv(1)
             if not part:
                 break
             head += part
         if b" 101" not in head.split(b"\r\n", 1)[0]:
             raise RuntimeError("The TV refused the remote connection.")
-        sock.settimeout(6)
+        sock.settimeout(wait)
+        got = None
         try:
             first = _ws_read(sock)
-            if "unauthorized" in first:
-                raise RuntimeError("The TV asks for permission: choose Allow on the TV screen, then try again.")
+            try:
+                ev = json.loads(first)
+            except ValueError:
+                ev = {}
+            name_ = str(ev.get("event") or "")
+            if "unauthorized" in name_ or "unauthorized" in first[:200]:
+                raise TvUnauthorized("unauthorized")
+            if "timeOut" in name_ or "timeout" in name_.lower():
+                raise TvUnauthorized("timeout")
+            got = (ev.get("data") or {}).get("token") if isinstance(ev.get("data"), dict) else None
         except socket.timeout:
+            if port == 8002 and not token:
+                raise TvUnauthorized("timeout")
+        sock.settimeout(6)
+        return sock, got
+    except Exception:
+        try:
+            sock.close()
+        except OSError:
             pass
+        raise
+
+
+def tv_connect():
+    """A connected remote channel, pairing with the TV when it asks for that."""
+    ip = remote_settings()["ip"]
+    if not ip:
+        raise RuntimeError("Beeldbuis does not know your TV yet. Open the Beeldbuis app on the TV once, or fill in the TV address in Settings.")
+    with LOCK:
+        token = STATE["settings"].get("tv_token") or ""
+        name = STATE["settings"].get("tv_name") or "Beeldbuis"
+
+    def remember(nm, tk):
+        with LOCK:
+            changed = STATE["settings"].get("tv_token") != tk or STATE["settings"].get("tv_name") != nm
+            STATE["settings"]["tv_token"], STATE["settings"]["tv_name"] = tk, nm
+        if changed:
+            save_config()
+
+    if token:                                  # paired before: the secured door, no question on the TV
+        try:
+            sock, got = _tv_open(ip, 8002, name, token, 6)
+            if got and str(got) != str(token):
+                remember(name, str(got))
+            return sock
+        except TvUnauthorized:
+            remember(name, "")                 # the TV forgot us (reset, or removed from its device list): pair again
+        except (OSError, ssl.SSLError):
+            pass
+    else:
+        try:                                   # older TVs take commands on the open door without asking
+            return _tv_open(ip, 8001, name, None, 6)[0]
+        except TvUnauthorized:
+            pass
+    if not TV_WS_LOCK.acquire(False):
+        raise RuntimeError("The TV is asking for permission: choose Allow on the TV screen.")
+    ask = "The TV asks for permission: choose Allow on the TV screen, then try again."
+    try:
+        fresh = "Beeldbuis %d" % (int(time.time()) % 900 + 100)
+        # the secured door under our own name; refused at once (this name was denied on the TV before) or no
+        # secured door at all: knock again under a new name, last on the open door
+        tries = [(8002, name), (8002, fresh), (8001, fresh)]
+        last = hard = None
+        for port, nm in tries:
+            t0 = time.time()
+            try:
+                sock, got = _tv_open(ip, port, nm, None, 40 if port == 8002 else 6)   # 'Allow Beeldbuis?' on the TV: wait for the answer
+                remember(nm, str(got or ""))
+                return sock
+            except TvUnauthorized as e:
+                if str(e) == "timeout" or time.time() - t0 > 4:
+                    raise RuntimeError(ask)
+                last = "refused"
+            except (OSError, ssl.SSLError) as e:
+                last = str(e)[:80] or type(e).__name__
+            except RuntimeError as e:              # this door is shut: try the next one
+                hard = e
+        if last is None and hard:
+            raise hard
+        if last == "refused":
+            raise RuntimeError("The TV refuses remote controls. On the TV: Settings → General → External Device Manager → "
+                               "Device Connection Manager → switch Access Notification to 'First Time Only' and remove Beeldbuis from the Device List, then try again.")
+        raise RuntimeError("The TV asks for permission, but its secured connection did not open (%s)." % last)
+    finally:
+        TV_WS_LOCK.release()
+
+
+def tv_ws(messages, gap=0.35):
+    """Send messages (dicts, or ('sleep', s)) to the Samsung TV's remote channel."""
+    sock = tv_connect()
+    try:
         for m in messages:
             if isinstance(m, tuple):
                 time.sleep(m[1]); continue
@@ -6134,7 +6240,7 @@ def remote_poll(since, dev, ip, wait=20.0):
         if since < 0:                  # first poll after the app starts: pick up a command from the last 90 s
             since = max([c["seq"] for c in REMOTE["cmds"] if time.time() - c["at"] > 90] or [0])
         while True:
-            out = [c for c in REMOTE["cmds"] if c["seq"] > since]
+            out = [c for c in REMOTE["cmds"] if c["seq"] > since and not (c.get("action") in ("text", "panel") and time.time() - c["at"] > 12)]
             if out or time.time() >= deadline:
                 REMOTE["tv_seen"] = time.time()
                 return {"cmds": out, "seq": REMOTE["seq"] if not out else out[-1]["seq"]}
@@ -6203,7 +6309,37 @@ def remote_send(body, sender):
             raise RuntimeError("The TV does not answer.")
         tv_launch(body.get("app") or "beeldbuis")
         return {}
+    if a == "text":
+        return remote_text(body, sender)
+    if a == "panel":                              # match data next to the picture, in the Beeldbuis TV app
+        if not tv_app_online():
+            raise RuntimeError("Beeldbuis is not open on the TV.")
+        return {"seq": remote_push({"action": "panel", "from": sender})}
     raise RuntimeError("Unknown remote action")
+
+
+def remote_text(body, sender):
+    """Type on the TV from a phone or the Mac. Two roads, both tried: the Beeldbuis TV app (fills its own text
+    field, or opens Search with the text) and the TV's own keyboard (any app: Netflix, YouTube, the browser;
+    works while the TV's on-screen keyboard is open)."""
+    import base64
+    text = str((body or {}).get("text") or "")[:300]
+    enter = bool((body or {}).get("enter"))
+    out = {"tv_app": tv_app_online(), "tv": False}
+    if out["tv_app"]:
+        out["seq"] = remote_push({"action": "text", "text": text, "enter": enter, "from": sender})
+    msgs = [{"method": "ms.remote.control", "params": {"Cmd": base64.b64encode(text.encode("utf-8")).decode(),
+                                                       "DataOfCmd": "base64", "TypeOfRemote": "SendInputString"}}]
+    if enter:
+        msgs.append({"method": "ms.remote.control", "params": {"TypeOfRemote": "SendInputEnd"}})
+    try:
+        tv_ws(msgs, gap=0.12)
+        out["tv"] = True
+    except Exception as e:  # noqa
+        if not out["tv_app"]:
+            raise
+        out["note"] = str(e)
+    return out
 
 
 def remote_record(body):
@@ -6486,6 +6622,188 @@ def remote_channel(name):
         raise RuntimeError("That channel has no source")
     return remote_send({"action": "play", "kind": "live", "id": v["id"], "ext": "ts", "name": g.get("name"),
                         "icon": g.get("icon", ""), "key": g.get("key")}, "siri")
+
+
+# ---------------------------------------------------------------------------
+# Calm home screen and screensaver on the TV (update 35): the weather, photos from a folder on this Mac and the
+# next recording. What to watch and what is live come from /api/home, which the TV already asks for.
+WEATHER_BASE = os.environ.get("IPTV_WEATHER_BASE", "https://api.open-meteo.com/v1")
+GEO_BASE = os.environ.get("IPTV_GEO_BASE", "https://geocoding-api.open-meteo.com/v1")
+WEATHER = {"t": 0, "place": "", "data": None}
+WEATHER_LOCK = threading.Lock()
+WMO = {0: ("Clear", "☀️"), 1: ("Mostly clear", "🌤️"), 2: ("Partly cloudy", "⛅"), 3: ("Cloudy", "☁️"), 45: ("Fog", "🌫️"), 48: ("Fog", "🌫️"),
+       51: ("Drizzle", "🌦️"), 53: ("Drizzle", "🌦️"), 55: ("Drizzle", "🌦️"), 56: ("Freezing drizzle", "🌧️"), 57: ("Freezing drizzle", "🌧️"),
+       61: ("Light rain", "🌧️"), 63: ("Rain", "🌧️"), 65: ("Heavy rain", "🌧️"), 66: ("Freezing rain", "🌧️"), 67: ("Freezing rain", "🌧️"),
+       71: ("Light snow", "🌨️"), 73: ("Snow", "🌨️"), 75: ("Heavy snow", "❄️"), 77: ("Snow", "🌨️"), 80: ("Showers", "🌦️"), 81: ("Showers", "🌦️"),
+       82: ("Heavy showers", "🌧️"), 85: ("Snow showers", "🌨️"), 86: ("Snow showers", "🌨️"), 95: ("Thunderstorm", "⛈️"),
+       96: ("Thunderstorm", "⛈️"), 99: ("Thunderstorm", "⛈️")}
+
+
+def _json_get(url, timeout=8):
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=timeout, context=API_SSL if url.startswith("https") else None) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def weather():
+    """Today's weather for the place typed in Settings (Open-Meteo, no key). None when no place is set."""
+    with LOCK:
+        place = str(STATE["settings"].get("weather_place") or "").strip()
+        geo = STATE["settings"].get("weather_geo")
+    if not place:
+        return None
+    with WEATHER_LOCK:
+        if WEATHER["place"] == place and time.time() - WEATHER["t"] < 1200:
+            return WEATHER["data"]
+        old = WEATHER["data"] if WEATHER["place"] == place else None
+        try:
+            if not (isinstance(geo, dict) and geo.get("place") == place):
+                g = (_json_get(GEO_BASE + "/search?count=1&language=en&name=" + urllib.parse.quote(place)).get("results") or [None])[0]
+                if not g:
+                    raise RuntimeError("Place '%s' not found" % place)
+                geo = {"place": place, "lat": g["latitude"], "lon": g["longitude"], "name": g.get("name") or place}
+                with LOCK:
+                    STATE["settings"]["weather_geo"] = geo
+                save_config()
+            d = _json_get(WEATHER_BASE + "/forecast?latitude=%s&longitude=%s&current=temperature_2m,weather_code"
+                          "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=1"
+                          % (geo["lat"], geo["lon"]))
+            cur, day = d.get("current") or {}, d.get("daily") or {}
+            text, icon = WMO.get(int(cur.get("weather_code") or 0), ("", ""))
+            first = lambda k: (day.get(k) or [None])[0]
+            data = {"place": geo["name"], "temp": cur.get("temperature_2m"), "text": text, "icon": icon,
+                    "max": first("temperature_2m_max"), "min": first("temperature_2m_min"), "rain": first("precipitation_probability_max")}
+        except Exception as e:  # noqa
+            data = old or {"place": place, "error": str(e)[:120]}
+        WEATHER.update(t=time.time(), place=place, data=data)
+        return data
+
+
+PHOTO_EXT = (".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp")
+PHOTO_CACHE = os.path.join(CONFIG_DIR, "photos")
+PHOTOS = {"t": 0, "dir": None, "files": [], "error": ""}
+PHOTO_LOCK = threading.Lock()
+
+
+def photo_files():
+    """Pictures in the folder chosen in Settings (and its subfolders), in a fixed shuffled order per day."""
+    with LOCK:
+        folder = str(STATE["settings"].get("saver_photos") or "").strip()
+    with PHOTO_LOCK:
+        if PHOTOS["dir"] == folder and time.time() - PHOTOS["t"] < 600:
+            return PHOTOS["files"]
+        files, err = [], ""
+        if folder:
+            folder = os.path.expanduser(folder)
+            try:
+                if not os.path.isdir(folder):
+                    raise OSError("folder not found")
+                os.listdir(folder)                     # macOS may refuse (Files and Folders privacy)
+                for root_, dirs, names in os.walk(folder):
+                    dirs[:] = [d for d in dirs if not d.startswith(".") and not d.endswith((".photoslibrary", ".app"))]
+                    for n in names:
+                        if n.lower().endswith(PHOTO_EXT) and not n.startswith("."):
+                            files.append(os.path.join(root_, n))
+                    if len(files) >= 5000:
+                        break
+            except OSError as e:
+                err = ("macOS does not let Beeldbuis read this folder (System Settings → Privacy & Security → Files and Folders)."
+                       if getattr(e, "errno", None) in (1, 13) else "Folder not found.")
+        import random as _r
+        _r.Random(time.strftime("%Y%m%d")).shuffle(files)
+        PHOTOS.update(t=time.time(), dir=str(STATE["settings"].get("saver_photos") or "").strip(), files=files, error=err)
+        return files
+
+
+def _jpeg_orientation(path):
+    """EXIF orientation (1-8) of a JPEG, 1 when there is none. The TV's old browser ignores it, so we turn the pixels."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read(256 * 1024)
+        i = 2
+        while i + 4 <= len(data) and data[i] == 0xFF:
+            marker, size = data[i + 1], int.from_bytes(data[i + 2:i + 4], "big")
+            if marker == 0xE1 and data[i + 4:i + 10] == b"Exif\x00\x00":
+                t = data[i + 10:i + 2 + size]
+                order = "little" if t[:2] == b"II" else "big"
+                off = int.from_bytes(t[4:8], order)
+                for k in range(int.from_bytes(t[off:off + 2], order)):
+                    e = t[off + 2 + 12 * k: off + 14 + 12 * k]
+                    if int.from_bytes(e[:2], order) == 0x0112:
+                        v = int.from_bytes(e[8:10], order)
+                        return v if 1 <= v <= 8 else 1
+                return 1
+            if marker == 0xDA:
+                break
+            i += 2 + size
+    except (OSError, ValueError, IndexError):
+        pass
+    return 1
+
+
+def photo_jpeg(i):
+    """Photo number i as a JPEG of at most 1920 px (made once, kept in the app folder)."""
+    files = photo_files()
+    if not files:
+        raise RuntimeError("No photos")
+    src = files[int(i) % len(files)]
+    st = os.stat(src)
+    out = os.path.join(PHOTO_CACHE, hashlib.sha1(("%s|%s|%s" % (src, st.st_mtime, st.st_size)).encode()).hexdigest()[:20] + ".jpg")
+    if os.path.exists(out) and os.path.getsize(out) > 0:
+        return out
+    os.makedirs(PHOTO_CACHE, exist_ok=True)
+    tmp = out + ".tmp.jpg"
+    made = False
+    if sys.platform == "darwin" and shutil.which("sips"):
+        r = subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "82", "-Z", "1920", src, "--out", tmp], capture_output=True, timeout=60)
+        made = r.returncode == 0 and os.path.exists(tmp)
+        turn = {3: "180", 6: "90", 8: "270"}.get(_jpeg_orientation(tmp)) if made else None
+        if turn:                                   # sips keeps the "this side up" note and leaves the pixels lying down
+            subprocess.run(["sips", "-r", turn, tmp], capture_output=True, timeout=60)
+    if not made and FFMPEG:
+        r = subprocess.run([FFMPEG, "-v", "error", "-y", "-i", src, "-vf", "scale='min(1920,iw)':-2", "-frames:v", "1", "-q:v", "4", tmp],
+                           capture_output=True, timeout=60)
+        made = r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0
+    if not made:
+        if src.lower().endswith((".jpg", ".jpeg")):
+            return src
+        raise RuntimeError("This photo can't be converted")
+    os.replace(tmp, out)
+    try:                                               # keep the folder small: newest 400
+        old = sorted((os.path.join(PHOTO_CACHE, n) for n in os.listdir(PHOTO_CACHE)), key=os.path.getmtime)
+        for fp in old[:-400]:
+            os.remove(fp)
+    except OSError:
+        pass
+    return out
+
+
+def tv_ambient():
+    with REC_LOCK:
+        nxt = sorted((r for r in RECS["items"] if r.get("status") in ("scheduled", "recording")), key=lambda r: r["start"])[:1]
+    files = photo_files()
+    return {"now": int(time.time()), "weather": weather(), "photos": len(files), "photo_error": PHOTOS["error"],
+            "next_rec": {"title": nxt[0].get("title"), "channel": nxt[0].get("channel"), "start": nxt[0]["start"],
+                         "status": nxt[0]["status"]} if nxt else None,
+            "inputs": [i["name"] for i in remote_settings()["inputs"]], "apps": [a for a in TV_APPS if a != "beeldbuis"]}
+
+
+def saver_choose_folder():
+    if sys.platform != "darwin":
+        raise RuntimeError("Type the folder path instead.")
+    start = os.path.expanduser("~/Pictures")
+    script = ('tell application "System Events" to activate\n'
+              'set f to choose folder with prompt "Choose a folder with photos for the Beeldbuis screensaver on the TV"'
+              + (' default location (POSIX file %s)' % json.dumps(start) if os.path.isdir(start) else "") + '\nreturn POSIX path of f')
+    try:
+        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("No folder chosen.")
+    if r.returncode != 0:
+        if "-128" in (r.stderr or ""):
+            return {"cancelled": True}
+        raise RuntimeError("The folder picker did not open (%s). Type the folder path instead." % (r.stderr or "").strip()[:160])
+    return {"path": r.stdout.strip().rstrip("/")}
 
 
 # ---------------------------------------------------------------------------
@@ -7045,7 +7363,7 @@ def dlna_control(peer, path, body, soapaction):
 
 
 PUBLIC_GET = ("/", "/manifest.json", "/favicon.ico", "/icon-192.png", "/icon-512.png")
-MAC_ONLY = ("/api/whisper/install", "/api/login", "/api/logout", "/api/quit", "/api/open-window", "/api/tv/choose-folder", "/api/tv/export",
+MAC_ONLY = ("/api/saver/choose-folder", "/api/whisper/install", "/api/login", "/api/logout", "/api/quit", "/api/open-window", "/api/tv/choose-folder", "/api/tv/export",
             "/api/phone", "/api/phone/new-code", "/api/phone/forget")
 _HOSTNAME = {"v": None}
 
@@ -7483,6 +7801,21 @@ class Handler(BaseHTTPRequestHandler):
             return self.api(lambda: tv_search(q("q"), int(q("limit", "80") or 80)))
         if path == "/api/tv/channels":
             return self.api(tv_channels)
+        if path == "/api/tv/ambient":
+            return self.api(tv_ambient)
+        if path == "/api/tv/photo":
+            try:
+                fp = photo_jpeg(int(q("i", "0") or 0))
+                data = open(fp, "rb").read()
+            except Exception:  # noqa
+                return self.send_error(404)
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "private, max-age=3600")
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if path == "/api/tv/subs":
             return self.api(lambda: tv_subs(q("kind"), q("id"), q("ext"), q("series"), int(q("season", "0") or 0), int(q("episode", "0") or 0)))
         if path == "/api/epg/search":
@@ -7523,6 +7856,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/remote/status":
             return self.api(remote_status)
         if path == "/api/remote/do":            # Siri Shortcuts: GET /api/remote/do?k=<key>&a=ps5  or  &channel=NPO 1
+            if q("type"):
+                return self.api(lambda: remote_text({"text": q("type"), "enter": q("enter") == "1"}, "siri"))
             return self.api(lambda: remote_channel(q("channel")) if q("channel") else remote_quick(q("a")))
         if path == "/api/positions":
             with LOCK:
@@ -7581,6 +7916,8 @@ class Handler(BaseHTTPRequestHandler):
                 body["vod_langs"] = None
             if body.get("profile") == "":
                 body.pop("profile")
+            if self.remote:                            # which folder of this Mac is shown on the TV is decided on the Mac
+                body.pop("saver_photos", None)
             with LOCK:
                 STATE["settings"].update(body)
             save_config()
@@ -7720,6 +8057,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.api(lambda: tv_export("manual"))
         if path == "/api/tv/choose-folder":
             return self.api(tv_choose_folder)
+        if path == "/api/saver/choose-folder":
+            return self.api(saver_choose_folder)
         if path == "/api/quit":
             self.send_json({"ok": True})
             threading.Timer(0.3, shutdown).start()

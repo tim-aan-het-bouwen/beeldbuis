@@ -83,7 +83,8 @@ class Server:
         self.env = dict(os.environ, IPTV_CONFIG_DIR=self.cfg, IPTV_PORT=str(self.port), IPTV_BIND="127.0.0.1", IPTV_REC_STALL="8",
                         IPTV_TMDB_BASE="http://127.0.0.1:9/3", IPTV_OMDB_BASE="http://127.0.0.1:9/omdb",
                         IPTV_OSUB_BASE="http://127.0.0.1:9/osub", IPTV_LB_BASE="http://127.0.0.1:9/lb",
-                        IPTV_SPORT_BASE="http://127.0.0.1:9/sport", **(env or {}))
+                        IPTV_SPORT_BASE="http://127.0.0.1:9/sport")
+        self.env.update(env or {})
         self.start()
 
     def start(self, login=True):
