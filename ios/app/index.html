@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Beeldbuis">
+<meta name="theme-color" content="#0E0F12">
+<link rel="apple-touch-icon" href="img/icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Beeldbuis</title>
+<link rel="icon" href="img/icon-64.png">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/phone.css">
+<script>window.BB_WEBAPP = true;</script>
+</head>
+<body>
+<div id="stage">
+  <div id="avplayer" class="hidden"></div>
+  <video id="video" class="hidden" playsinline webkit-playsinline x-webkit-airplay="allow"></video>
+
+  <header id="top" class="hidden">
+    <img class="wordmark" src="img/wordmark.png" alt="Beeldbuis">
+    <nav id="tabs">
+      <button class="f tab" data-tab="home">Tonight</button>
+      <button class="f tab" data-tab="sport">Sport</button>
+      <button class="f tab" data-tab="live">Live TV</button>
+      <button class="f tab" data-tab="movies">Movies</button>
+      <button class="f tab" data-tab="series">Series</button>
+      <button class="f tab" data-tab="search">Search</button>
+      <button class="f tab" data-tab="settings">Settings</button>
+    </nav>
+    <div id="clock"></div>
+  </header>
+
+  <main id="screen"></main>
+
+  <div id="osd" class="hidden">
+    <div class="osd-bar">
+      <div class="osd-title" id="osdTitle"></div>
+      <div class="osd-sub" id="osdSub"></div>
+      <div class="osd-progress hidden" id="osdProgress"><div id="osdFill"></div></div>
+      <div class="osd-time" id="osdTime"></div>
+    </div>
+  </div>
+  <div id="pbar" class="hidden">
+    <button class="pb" id="pbBack" aria-label="Close">✕</button>
+    <div id="pbTitle"></div>
+    <button class="pb live-only" id="pbPrev" aria-label="Previous channel">▲</button>
+    <button class="pb live-only" id="pbNext" aria-label="Next channel">▼</button>
+    <button class="pb live-only" id="pbFav" aria-label="Favourite">★</button>
+    <button class="pb vod-only" id="pbSubs" aria-label="Subtitles">Aa</button>
+  </div>
+  <div id="busy" class="hidden"><img src="img/icon-192.png" alt=""><div id="busyText">Loading…</div></div>
+  <div id="side" class="hidden"></div>
+  <div id="saver" class="hidden"></div>
+  <div id="toast" class="hidden"></div>
+</div>
+<script>/* Safari plays HLS itself; other browsers (Android, desktop) get hls.js */
+if (!document.createElement('video').canPlayType('application/vnd.apple.mpegurl')) document.write('<script src="js/hls.min.js"><\/script>');</script>
+<script src="js/groups.js"></script>
+<script src="js/platform.js"></script>
+<script src="js/idb.js"></script>
+<script src="js/store.js"></script>
+<script src="js/xtream.js"></script>
+<script src="js/search.js"></script>
+  <script src="js/omdb.js"></script>
+  <script src="js/mac.js"></script>
+<script src="js/substyle.js"></script>
+<script src="js/player.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/app.js"></script>
+<script src="js/selftest.js"></script>
+</body>
+</html>

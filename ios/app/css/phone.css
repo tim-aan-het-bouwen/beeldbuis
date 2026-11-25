@@ -1,0 +1,87 @@
+/* Beeldbuis on iPhone/iPad (web app, no Mac needed).
+   The TV stage is reused: fit() makes it as wide as the phone in "TV pixels" (720 upright, 1500 sideways) and scales it
+   down, so the TV's sizes stay readable. These rules only turn the fixed 1920x1080 layout into one that follows
+   the stage (--sw x --sh) and puts the tabs at the bottom, where a thumb reaches them. */
+body.phone { background: var(--navy); -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+  -webkit-text-size-adjust: 100%; touch-action: manipulation; }
+body.phone input { -webkit-user-select: text; user-select: text; }
+body.phone #stage { width: var(--sw); height: var(--sh); }
+body.phone .f { transition: none; }
+body.phone .f.focus, body.phone .btn.focus, body.phone .chip.focus { transform: none; }
+body.phone .tile.focus, body.phone .lcard.focus { transform: none; }
+
+/* header: wordmark + clock; tabs as a bar at the bottom */
+body.phone #top { width: 100%; height: 104px; padding: 26px 32px 0; background: var(--navy); }
+body.phone .wordmark { height: 52px; margin-right: auto; }
+body.phone #clock { font-size: 30px; }
+body.phone #tabs { position: absolute; left: 0; top: calc(var(--sh) - 128px); width: 100%; height: 128px; padding: 6px 4px 34px;
+  background: #15171b; border-top: 3px solid #000; display: flex; justify-content: space-around; }
+body.phone .tab { flex: 1; margin: 0; padding: 50px 0 0; border: 0; border-radius: 0; font-size: 19px; text-align: center; position: relative; color: var(--dim); }
+body.phone .tab::before { position: absolute; left: 0; right: 0; top: 4px; font-size: 38px; line-height: 44px; text-align: center; }
+body.phone .tab[data-tab=home]::before { content: "★"; }
+body.phone .tab[data-tab=sport]::before { content: "⚽"; }
+body.phone .tab[data-tab=live]::before { content: "📺"; }
+body.phone .tab[data-tab=movies]::before { content: "🎬"; }
+body.phone .tab[data-tab=series]::before { content: "🍿"; }
+body.phone .tab[data-tab=search]::before { content: "🔍"; }
+body.phone .tab[data-tab=settings]::before { content: "⚙"; }
+body.phone .tab.active, body.phone .tab.focus { background: none; color: var(--oker); }
+body.phone #screen { width: 100%; top: 104px; height: calc(var(--sh) - 232px); }
+body.phone #top.hidden + #screen { top: 0; height: var(--sh); }
+
+/* pages fill the screen area and scroll by finger */
+body.phone .home, body.phone .search, body.phone .series, body.phone .guide { height: 100%; }
+body.phone .home { padding: 0 0 40px 28px; overflow: auto; }
+body.phone .search { padding: 10px 0 40px 28px; }
+body.phone .page { padding: 20px 32px; overflow: auto; height: 100%; }
+body.phone .chips { max-height: none; }
+body.phone .home-head { flex-wrap: wrap; }
+body.phone .home-head .profiles { margin: 8px 0 0; width: 100%; }
+body.phone .home-head .prof:first-child { margin-left: 0; }
+body.phone .hero { width: calc(var(--sw) - 56px); height: 400px; background-position: right 20px top 20px; background-size: 200px 200px; }
+body.phone .hero .hbg { width: 100%; height: 100%; }
+body.phone .hero .htxt { left: 28px; right: 28px; width: auto; }
+body.phone .hero h1 { font-size: 48px; white-space: normal; }
+
+/* list | content views become one column */
+body.phone .split { height: 100%; padding: 0; flex-direction: column; }
+body.phone .side { width: 100%; max-height: 34%; padding: 0 20px 10px 28px; border-bottom: 3px solid #000; }
+body.phone .main { padding: 10px 28px 60px; }
+body.phone .series { padding: 0 28px; overflow: auto; }
+body.phone .detail { flex-direction: column; }
+body.phone .detail .poster { width: 240px; height: 350px; margin: 0 0 20px; }
+
+/* overlays */
+body.phone .modal, body.phone #busy { width: var(--sw); height: var(--sh); }
+body.phone .modal-box { max-width: calc(var(--sw) - 40px); padding: 32px 30px; max-height: calc(var(--sh) - 120px); overflow: auto; }
+body.phone .modal.wide .modal-box { width: calc(var(--sw) - 40px); max-width: calc(var(--sw) - 40px); }
+body.phone #toast { max-width: calc(var(--sw) - 60px); bottom: 160px; }
+body.phone .login { width: auto; margin: 0; padding: 60px 40px; }
+body.phone .login-logo { width: 100%; max-width: 560px; }
+body.phone .calm { width: var(--sw); height: var(--sh); top: -104px; padding: 60px 32px 0; }
+
+/* playing: touch bar on top, the picture under it (upright) or full screen (sideways); programme info under the picture */
+body.phone.playing #stage { background: #000; }
+body.phone #video { left: 0 !important; top: 110px !important; width: var(--sw) !important; height: calc(var(--sw) * .5625) !important; }
+body.phone:not(.upright) #video { top: 0 !important; height: var(--sh) !important; }
+#pbar { position: absolute; left: 0; top: 0; width: 100%; height: 110px; display: flex; align-items: center; padding: 20px 16px 0; z-index: 15; background: #000; }
+body.phone:not(.upright) #pbar { background: linear-gradient(rgba(0, 0, 0, .75), rgba(0, 0, 0, 0)); height: 120px; padding-top: 10px; }
+#pbTitle { flex: 1; font-weight: 700; font-size: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 16px; }
+.pb { width: 76px; height: 76px; margin-left: 8px; border-radius: 40px; background: var(--panel2); border: 3px solid #000; font-size: 32px; font-weight: 800; text-align: center; color: var(--creme); }
+#pbBack { margin-left: 0; background: var(--oker); color: var(--navy); }
+#pbar .live-only { display: none; }
+#pbar.is-live .live-only { display: block; }
+#pbar.is-live .vod-only { display: none; }
+body.phone #osd { display: none; }
+body.phone.upright.playing #osd { display: block !important; left: 0; top: calc(110px + var(--sw) * .5625); bottom: auto; width: 100%; padding: 28px 32px; background: none; }
+body.phone.upright.playing #osd .osd-title { font-size: 40px; }
+
+/* settings, search, series */
+body.phone .setting { width: 100%; padding: 22px 24px; }
+body.phone .setting span { text-align: right; margin-left: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+body.phone #stLayer, body.phone #stStart, body.phone #stSaver { display: none; }
+body.phone .search-bar { margin: 0 28px 16px 0; }
+body.phone .series-head .poster { width: 180px; height: 262px; margin-right: 24px; }
+body.phone .series-head h1 { font-size: 40px; }
+body.phone .episodes { height: auto; overflow: visible; }
+body.phone .chan .logo { width: 100px; margin-right: 16px; }
