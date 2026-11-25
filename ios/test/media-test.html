@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>BB test</title><body style="background:#000;color:#fff;font:14px system-ui">
+<video id="v" muted playsinline autoplay width="480"></video><pre id="o"></pre>
+<script>
+// Beeldbuis iPhone test: can this page (https or http) reach the Xtream API and play live + film?
+// Login comes in the hash: #<base64 of JSON {s:server,u:user,p:pass,live:id,mov:id}>; nothing is stored.
+var c = JSON.parse(atob(location.hash.slice(1))), v = document.getElementById('v'), R = [], t0 = Date.now();
+function log(m) { document.getElementById('o').textContent += m + '\n'; }
+function say(k, x) { R.push(k + ':' + x); document.title = 'BB|' + location.protocol + '|' + R.join('|'); log(k + ' ' + x); }
+function api() {
+  return fetch(c.s + '/player_api.php?username=' + encodeURIComponent(c.u) + '&password=' + encodeURIComponent(c.p))
+    .then(function (r) { return r.json(); }).then(function (j) { say('api', j.user_info ? 'ok' : 'bad'); }, function (e) { say('api', 'ERR ' + e.message); });
+}
+function media(k, url, secs) {
+  return new Promise(function (done) {
+    var t = Date.now(), first = 0;
+    v.onerror = function () { say(k, 'error' + (v.error ? v.error.code : '')); };
+    v.ontimeupdate = function () { if (!first && v.currentTime > 0.5) { first = 1; log(k + ' first frame ' + ((Date.now() - t) / 1000).toFixed(1) + 's'); } };
+    v.src = url; v.play().catch(function (e) { log(k + ' play() ' + e.name); });
+    setTimeout(function () { say(k, (v.currentTime > 2 ? 'ok' : 'NO') + Math.round(v.currentTime)); v.pause(); v.removeAttribute('src'); v.load(); setTimeout(done, 3000); }, secs * 1000);
+  });
+}
+var b = c.s.replace(/\/+$/, ''), cr = encodeURIComponent(c.u) + '/' + encodeURIComponent(c.p);
+api().then(function () { return media('live', b + '/live/' + cr + '/' + c.live + '.m3u8', 40); })
+  .then(function () { return media('mp4', b + '/movie/' + cr + '/' + c.mov + '.mp4', 30); })
+  .then(function () { say('DONE', Math.round((Date.now() - t0) / 1000)); });
+</script>
