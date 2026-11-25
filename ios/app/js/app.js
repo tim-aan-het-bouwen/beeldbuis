@@ -1912,6 +1912,7 @@
       if (MAC.link() && !playLive.hinted) { playLive.hinted = true; setTimeout(function () { toast('<b>OK</b> pause · <b>◀</b> 15 s back · <b>▶</b> 30 s on · <b class="k-blue">Blue</b> from the start · <b class="k-red">Red</b> records on your Mac', 6000); }, 2500); }
     }
     if (opts.catchup) {                    // a programme from the guide that is on now or already over: the provider's catch-up
+      if (P.isPhone) { toast('Catch-up does not play on an iPhone: the provider only sends it as raw TS, which Safari cannot open', 6000); return; }
       var av = null, vs = order(g), now = Date.now() / 1000;
       for (var ai = 0; ai < vs.length && !av; ai++) if (vs[ai].archive) av = vs[ai];
       if (!av) { noRewind(); return; }
