@@ -33,11 +33,12 @@
         var s = S.get(); s.account = r.account; if (!s.countries.length) s.countries = ['NL']; S.save(); log('login ok');
         var steps = Promise.resolve();
         (c.tests || []).forEach(function (t) {
-          steps = steps.then(function () {
+          steps = steps.then(function () { return run(t); }).catch(function (e) { log('ERROR ' + (e && e.message)); A.test.stop(); return wait(3000); });
+          function run(t) {
             if (t.kind === 'live') return watch(t.name, t.secs || 40, function () { A.test.live(t.id, t.name); });
             if (t.kind === 'movie') return watch(t.name, t.secs || 30, function () { A.test.vod({ key: 'vod:' + t.id, type: 'movie', id: t.id, ext: t.ext, name: t.title || t.name, cat: t.cat, icon: '' }); });
             if (t.kind === 'url') return watch(t.name, t.secs || 30, function () { var x = v(); x.classList.remove('hidden'); x.src = t.url.replace('{S}', c.s).replace('{U}', encodeURIComponent(c.u)).replace('{P}', encodeURIComponent(c.p)); x.play().catch(function (e) { log('play() ' + e.name); }); });
-          });
+          }
         });
         return steps.then(function () { log('DONE'); });
       });

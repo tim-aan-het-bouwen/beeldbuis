@@ -41,7 +41,8 @@ def norm(n):
 
 live = api(action="get_live_streams")
 vods = api(action="get_vod_streams")
-npo = next((x for x in live if re.search(r"NPO ?1\b", x.get("name", ""))), live[0])
+npo = next((x for x in live if re.search(r"NPO ?1\b", x.get("name", "")) and re.search(r"\b(FHD|HD)\b", x.get("name", ""))), None) or \
+    next((x for x in live if re.search(r"NPO ?1\b", x.get("name", ""))), live[0])
 hevc = next((x for x in live if "Main Event" in x.get("name", "") and "FHD" in x.get("name", "")), None)
 arch = next((x for x in live if str(x.get("tv_archive")) == "1" and re.search(r"NPO ?1\b", x.get("name", ""))), None) or \
     next((x for x in live if str(x.get("tv_archive")) == "1"), None)
@@ -62,11 +63,11 @@ if hevc:
 m = mp4s[len(mp4s) // 2]
 tests.append({"kind": "movie", "id": m["stream_id"], "ext": "mp4", "name": "movie mp4", "title": m["name"], "cat": m.get("category_id"), "secs": 30})
 if twin:
-    tests.append({"kind": "movie", "id": twin["stream_id"], "ext": "mkv", "name": "movie mkv with twin", "title": twin["name"], "cat": twin.get("category_id"), "secs": 45})
+    tests.append({"kind": "movie", "id": twin["stream_id"], "ext": "mkv", "name": "movie mkv with twin", "title": twin["name"], "cat": twin.get("category_id"), "secs": 90})
 if lone:
     tests.append({"kind": "movie", "id": lone["stream_id"], "ext": "mkv", "name": "movie mkv alone", "title": lone["name"], "cat": lone.get("category_id"), "secs": 20})
 if arch:
-    st = (datetime.datetime.utcnow() + datetime.timedelta(hours=1) - datetime.timedelta(hours=2)).strftime("%Y-%m-%d:%H-%M")
+    st = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1) - datetime.timedelta(hours=2)).strftime("%Y-%m-%d:%H-%M")
     for ext in ("m3u8", "ts"):
         tests.append({"kind": "url", "name": "catch-up " + ext, "secs": 30, "url": "{S}/timeshift/{U}/{P}/60/%s/%s.%s" % (st, arch["stream_id"], ext)})
 

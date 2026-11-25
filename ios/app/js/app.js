@@ -2111,7 +2111,7 @@
   function osdLive() {
     var g = play.group, v = order(g)[play.variant];
     $('#osdTitle').textContent = g.name;
-    $('#osdSub').textContent = (v.q ? (v.q === '8K' ? '4K' : v.q) + ' · ' : '') + (play.list.length > 1 ? 'Channel ' + (play.index + 1) + ' of ' + play.list.length + ' · CH▲▼ to switch' : '');
+    $('#osdSub').textContent = (v.q ? (v.q === '8K' ? '4K' : v.q) + ' · ' : '') + (play.list && play.list.length > 1 ? 'Channel ' + (play.index + 1) + ' of ' + play.list.length + (P.isPhone ? '' : ' · CH▲▼ to switch') : '');
     $('#osdProgress').classList.add('hidden');
     liveOsd();
     chanEpg(g, v).then(function (ps) {
@@ -2859,7 +2859,7 @@
   };
   // hooks for the self-test page (ios/test): play things without tapping through the screens
   var testApi = {
-    live: function (id, name) { playLive({ key: 'test:' + id, name: name || 'Test', variants: [{ id: id, q: 'FHD', ext: 'ts', _i: 0, epg: '' }] }, null, 0); },
+    live: function (id, name) { var g = { key: 'test:' + id, name: name || 'Test', variants: [{ id: id, q: 'FHD', ext: 'ts', _i: 0, epg: '' }] }; playLive(g, [g], 0); },
     vod: function (it) { playVodNow(it, it.start || 0); },
     episode: function (ep) { playEpisodeNow(ep, ep.seriesItem, null); },
     stop: function () { stopPlayback(); closeModal(); },
