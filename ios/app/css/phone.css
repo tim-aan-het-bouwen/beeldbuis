@@ -1,5 +1,5 @@
 /* Beeldbuis on iPhone/iPad (web app, no Mac needed).
-   The TV stage is reused: fit() makes it as wide as the phone in "TV pixels" (720 upright, 1500 sideways) and scales it
+   The TV stage is reused: fit() makes it as wide as the phone in "TV pixels" (720 upright, 1280 sideways) and scales it
    down, so the TV's sizes stay readable. These rules only turn the fixed 1920x1080 layout into one that follows
    the stage (--sw x --sh) and puts the tabs at the bottom, where a thumb reaches them. */
 body.phone { background: var(--navy); -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
@@ -85,3 +85,11 @@ body.phone .series-head .poster { width: 180px; height: 262px; margin-right: 24p
 body.phone .series-head h1 { font-size: 40px; }
 body.phone .episodes { height: auto; overflow: visible; }
 body.phone .chan .logo { width: 100px; margin-right: 16px; }
+
+/* room for the iPhone's home indicator under the tab bar */
+body.phone.upright #tabs { top: calc(var(--sh) - 150px); height: 150px; padding-bottom: 56px; }
+body.phone.upright #screen { height: calc(var(--sh) - 254px); }
+/* sideways there is room for the list next to the content again */
+body.phone:not(.upright) .split { flex-direction: row; }
+body.phone:not(.upright) .side { width: 440px; max-height: none; border-bottom: 0; border-right: 3px solid #000; }
+body.phone .chan { width: auto; }

@@ -150,6 +150,7 @@
   var NEWS_CAT = /(^|[^a-z])(news|nieuws|info|journaal|nachrichten|actualit)/i;
   var home = { items: {}, gen: 0 };
   function showHome() {
+    phoneTabs();
     showTop(true); setTab('home');
     var s = S.get(), gen = ++home.gen;
     var cont = Object.keys(s.positions).map(function (k) { return s.positions[k]; })
@@ -1735,6 +1736,7 @@
   function startLabel() { return S.get().startScreen === 'calm' ? 'Calm home (clock, consoles and apps)' : 'Tonight'; }
   function saverLabel() { var m = saverMinutes(); return m ? 'After ' + m + ' minutes · your photos and tonight\'s picks' : 'Off'; }
   function showSettings() {
+    phoneTabs();
     showTop(true); setTab('settings');
     var s = S.get();
     screen.innerHTML = '<div class="page settings">' +
@@ -2796,7 +2798,10 @@
   }
 
   // ---------- start ----------
+  // Sport needs Beeldbuis on a Mac (guide + live scores); on an iPhone without that link the tab is hidden
+  function phoneTabs() { if (P.isPhone) { var t = document.querySelector('.tab[data-tab=sport]'); if (t) t.classList.toggle('hidden', !MAC.link()); } }
   function wireTabs() {
+    phoneTabs();
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
       b.onclick = function () {
         var t = b.getAttribute('data-tab');
@@ -2808,8 +2813,8 @@
   function fit() {
     var st = $('#stage'), w = root.innerWidth, h = root.innerHeight;
     if (P.isPhone) {
-      // phone: the stage is as wide as the screen in "TV pixels" (720 upright, 1500 sideways) and as tall as it fits
-      var z = w / (w < h ? 720 : 1500);
+      // phone: the stage is as wide as the screen in "TV pixels" (720 upright, 1280 sideways) and as tall as it fits
+      var z = w / (w < h ? 720 : 1280);
       st.style.width = Math.round(w / z) + 'px'; st.style.height = Math.round(h / z) + 'px';
       st.style.transform = 'scale(' + z + ')'; st.style.left = '0px';
       document.body.classList.add('phone'); document.body.classList.toggle('upright', w < h);

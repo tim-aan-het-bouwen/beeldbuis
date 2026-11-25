@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Beeldbuis">
 <meta name="theme-color" content="#0E0F12">
 <link rel="apple-touch-icon" href="img/icon-180.png">
@@ -14,7 +14,9 @@
 <link rel="icon" href="img/icon-64.png">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/phone.css">
-<script>window.BB_WEBAPP = true;</script>
+<script>window.BB_WEBAPP = true;
+/* the provider's streams are plain http: from an https page Safari blocks them, so this app always runs on http */
+if (location.protocol === 'https:' && !/^(localhost|127\.)/.test(location.hostname)) location.replace('http://' + location.host + location.pathname + location.search);</script>
 </head>
 <body>
 <div id="stage">
