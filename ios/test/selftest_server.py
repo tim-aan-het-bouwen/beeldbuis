@@ -68,8 +68,10 @@ if lone:
     tests.append({"kind": "movie", "id": lone["stream_id"], "ext": "mkv", "name": "movie mkv alone", "title": lone["name"], "cat": lone.get("category_id"), "secs": 20})
 if arch:
     st = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1) - datetime.timedelta(hours=2)).strftime("%Y-%m-%d:%H-%M")
-    for ext in ("m3u8", "ts"):
+    for ext in ("ts", "m3u8"):
         tests.append({"kind": "url", "name": "catch-up " + ext, "secs": 30, "url": "{S}/timeshift/{U}/{P}/60/%s/%s.%s" % (st, arch["stream_id"], ext)})
+    tests.append({"kind": "url", "name": "catch-up php m3u8", "secs": 30,
+                  "url": "{S}/streaming/timeshift.php?username={U}&password={P}&stream=%s&start=%s&duration=60&extension=m3u8" % (arch["stream_id"], st)})
 
 C = json.dumps({"s": BASE, "u": U, "p": P, "tests": tests}).encode()
 LOG = []

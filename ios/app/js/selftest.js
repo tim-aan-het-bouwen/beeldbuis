@@ -28,6 +28,7 @@
   }
   root.addEventListener('load', function () {
     A = root.BBApp;
+    v().muted = true; v().defaultMuted = true;      // nobody taps during a self-test: Safari only autoplays muted video
     fetch('/c').then(function (r) { return r.json(); }).then(function (c) {
       return X.login(c.s, c.u, c.p).then(function (r) {
         var s = S.get(); s.account = r.account; if (!s.countries.length) s.countries = ['NL']; S.save(); log('login ok');
